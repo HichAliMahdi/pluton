@@ -90,6 +90,9 @@ export default defineConfig(({ mode }) => {
             },
          }),
       ],
+      esbuild: {
+         drop: mode === 'production' ? ['console', 'debugger'] : [],
+      },
       resolve: {
          // alias: {
          //    '@': path.resolve(__dirname, 'src'),
