@@ -206,6 +206,71 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute SHA256
+        id: sha256
+        run: |
+          FILE=$(ls dist/installers/*.tar.gz | head -1)
+          SHA=$(shasum -a 256 "$FILE" | awk '{print $1}')
+          echo "sha256=$SHA" >> $GITHUB_OUTPUT
+          echo "SHA256: $SHA"
+
+      - name: Upload SHA256 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sha256-${{ matrix.platform }}
+          path: dist/installers/*.tar.gz
+          retention-days: 1
+
+  update-homebrew:
+    name: Update Homebrew Tap
+    needs: build-macos
+    runs-on: ubuntu-latest
+    environment: ci
+    steps:
+      - name: Download macOS arm64 tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-macos-arm64
+          path: artifacts/arm64
+
+      - name: Download macOS x64 tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: sha256-macos-x64
+          path: artifacts/x64
+
+      - name: Compute SHA256 and update cask
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          # Extract version from tag
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          VERSION="${VERSION#pluton-v}"
+          echo "Version: $VERSION"
+
+          # Compute SHA256 for both architectures
+          SHA_ARM64=$(shasum -a 256 artifacts/arm64/*.tar.gz | awk '{print $1}')
+          SHA_X64=$(shasum -a 256 artifacts/x64/*.tar.gz | awk '{print $1}')
+          echo "SHA256 arm64: $SHA_ARM64"
+          echo "SHA256 x64:   $SHA_X64"
+
+          # Clone the homebrew tap repo
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/plutonhq/homebrew-pluton.git" tap
+          cd tap
+
+          # Update the cask file with new version and SHA256 values
+          sed -i "s/version \".*\"/version \"$VERSION\"/" Casks/pluton.rb
+          sed -i "0,/sha256 \".*\"/{s/sha256 \".*\"/sha256 \"$SHA_ARM64\"/}" Casks/pluton.rb
+          sed -i "0,/sha256 \"$SHA_ARM64\"/! {0,/sha256 \".*\"/ s/sha256 \".*\"/sha256 \"$SHA_X64\"/}" Casks/pluton.rb
+
+          # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/pluton.rb
+          git diff --cached --quiet || git commit -m "Update pluton to $VERSION"
+          git push
+
   upload-scripts:
     name: Upload Installer Scripts to R2
     runs-on: ubuntu-latest
