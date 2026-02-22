@@ -795,6 +795,15 @@ async function createDistributionPackages() {
       }
     }
 
+    // Fallback for single-target builds: pkg outputs just 'pluton' (no suffix)
+    // This happens in CI matrix builds where each platform is built separately
+    if (!(await fileExists(executableSource))) {
+      const plainSource = join(pkgBuildsDir, OUTPUT_NAME);
+      if (await fileExists(plainSource)) {
+        executableSource = plainSource;
+      }
+    }
+
     const executableDest = join(packageDir, config.executableName);
 
     if (await fileExists(executableSource)) {
