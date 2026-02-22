@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/plutonhq/pluton/compare/pluton-v0.5.0...pluton-v0.5.1) (2026-02-22)
+
+
+### Bug Fixes
+
+* adds missing macOS build. ([342a33c](https://github.com/plutonhq/pluton/commit/342a33c94b60ad1c6afa0e57ef8e5d0f7ee62638))
+
 ## [0.5.0](https://github.com/plutonhq/pluton/compare/pluton-v0.4.0...pluton-v0.5.0) (2026-02-21)
 
 
