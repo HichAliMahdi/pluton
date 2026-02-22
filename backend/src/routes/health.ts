@@ -41,7 +41,6 @@ export function createHealthRouter(router: Router = Router()): Router {
 				version: process.env.APP_VERSION || 'unknown',
 				checks: {
 					database: false,
-					mqtt: false,
 					restic: false,
 					rclone: false,
 					rear: false,

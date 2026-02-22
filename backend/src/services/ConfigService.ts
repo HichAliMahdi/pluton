@@ -13,7 +13,6 @@ const baseConfigSchema = z.object({
 	// General
 	NODE_ENV: z.enum(['development', 'production', 'test']).default('production'),
 	SERVER_PORT: z.coerce.number().int().positive().default(5173),
-	MQTT_PORT: z.coerce.number().int().positive().default(1883).optional(),
 	APP_URL: z.string().default('http://localhost:5173'),
 	APP_TITLE: z.string().min(1).default('Pluton'),
 	MAX_CONCURRENT_BACKUPS: z.coerce.number().int().positive().default(2),
@@ -59,7 +58,6 @@ const userConfigSchema = baseConfigSchema
 		MAX_CONCURRENT_BACKUPS: true,
 		SESSION_DURATION: true,
 		SERVER_PORT: true,
-		MQTT_PORT: true,
 		ALLOW_CUSTOM_RESTORE_PATH: true,
 		ALLOW_FILE_BROWSER: true,
 		FILE_BROWSER_ROOT: true,

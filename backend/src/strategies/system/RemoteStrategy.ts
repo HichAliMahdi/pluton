@@ -81,11 +81,6 @@ export class RemoteStrategy implements SystemStrategy {
 		action: string,
 		payload: any
 	): Promise<{ success: boolean; result: any }> {
-		console.log(
-			'[MQTT] Publishing command:',
-			this.deviceId,
-			`command/system/${this.deviceId}/${action}`
-		);
 		return new Promise((resolve, reject) => {
 			resolve({ success: true, result: null });
 		});
