@@ -166,6 +166,33 @@ if [ -f "${SCRIPT_DIR}/uninstall.sh" ]; then
     chmod +x "${INSTALL_DIR}/uninstall.sh"
 fi
 
+# Copy service wrapper script (sets up keychain for LaunchDaemon)
+echo "  Installing service wrapper..."
+if [ -f "${SCRIPT_DIR}/pluton-service.sh" ]; then
+    cp "${SCRIPT_DIR}/pluton-service.sh" "${INSTALL_DIR}/pluton-service.sh"
+    chmod +x "${INSTALL_DIR}/pluton-service.sh"
+fi
+
+# Set up macOS keychain for LaunchDaemon (root) context
+# LaunchDaemons run as root without a default keychain, which causes
+# @napi-rs/keyring to fail. We create a dedicated Pluton keychain.
+echo "  Setting up system keychain for service..."
+export HOME=/var/root
+KEYCHAIN_DIR="/var/root/Library/Keychains"
+KEYCHAIN_PATH="${KEYCHAIN_DIR}/pluton.keychain-db"
+KEYCHAIN_PASSWORD="pluton-service-keychain"
+mkdir -p "${KEYCHAIN_DIR}"
+if [ ! -f "${KEYCHAIN_PATH}" ]; then
+    security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+    echo "  Created Pluton keychain at ${KEYCHAIN_PATH}"
+else
+    echo "  Pluton keychain already exists"
+fi
+security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+security set-keychain-settings "${KEYCHAIN_PATH}"
+security list-keychains -d system -s "${KEYCHAIN_PATH}"
+security default-keychain -s "${KEYCHAIN_PATH}"
+
 # Write configuration file (only on fresh install — preserve on upgrade)
 if [ "$IS_UPGRADE" = false ] || [ ! -f "${DATA_DIR}/config/config.json" ]; then
     echo "  Writing configuration..."
@@ -191,7 +218,8 @@ cat > "${PLIST_FILE}" << EOF
 
     <key>ProgramArguments</key>
     <array>
-        <string>${INSTALL_DIR}/pluton</string>
+        <string>/bin/bash</string>
+        <string>${INSTALL_DIR}/pluton-service.sh</string>
     </array>
 
     <key>WorkingDirectory</key>

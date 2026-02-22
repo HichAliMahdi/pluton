@@ -112,6 +112,13 @@ if [ -d "${INSTALL_DIR}" ]; then
     rm -rf "${INSTALL_DIR}"
 fi
 
+# Clean up Pluton keychain (created for LaunchDaemon keyring access)
+KEYCHAIN_PATH="/var/root/Library/Keychains/pluton.keychain-db"
+if security show-keychain-info "${KEYCHAIN_PATH}" &>/dev/null; then
+    echo "Removing Pluton system keychain..."
+    security delete-keychain "${KEYCHAIN_PATH}" 2>/dev/null || true
+fi
+
 # Remove data directory if requested
 if [ "$REMOVE_DATA" = true ]; then
     if [ -d "${DATA_DIR}" ]; then
