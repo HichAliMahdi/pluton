@@ -282,6 +282,30 @@ export class RestoreHandler {
 			return result;
 		} catch (error: any) {
 			const errMsg = error.message || 'Restic restore command failed';
+
+			// On macOS, restic exits with code 1 for non-fatal xattr errors (e.g.,
+			// SIP-protected "com.apple.rootless"). The file data is restored successfully;
+			// only the extended attribute write fails. Treat these as warnings, not failures.
+			const isXattrOnly =
+				process.platform === 'darwin' &&
+				/xattr\.LSet.*operation not permitted/i.test(errMsg) &&
+				!/fatal(?!.*xattr)/i.test(errMsg);
+
+			if (isXattrOnly) {
+				console.warn(
+					`[RestoreHandler] Restic reported xattr errors but file data was restored. Treating as success.`
+				);
+				await this.updateProgress(
+					planId,
+					restoreId,
+					'restore',
+					'RESTORE_OPERATION_COMPLETE',
+					true,
+					'Restore completed but some macOS extended attributes could not be set (SIP restriction).'
+				);
+				return '';
+			}
+
 			await this.updateProgress(
 				planId,
 				restoreId,
@@ -421,11 +445,11 @@ export class RestoreHandler {
 
 	async canRun(options: RestoreOptions) {
 		// Check system resource availability
+		// Use a fixed minimum (128MB) rather than scaling by CPU count.
+		// Restic's memory usage doesn't scale linearly with cores, and on macOS
+		// os.freemem() excludes reclaimable cached memory.
 		const availableMemory = os.freemem();
-		const processorCount = process.env.GOMAXPROCS
-			? parseInt(process.env.GOMAXPROCS, 10)
-			: os.cpus().length;
-		const requiredMemory = 64 * 1024 * 1024 * processorCount;
+		const requiredMemory = 128 * 1024 * 1024; // 128MB minimum
 		if (availableMemory < requiredMemory) {
 			throw new Error(`Insufficient memory to perform restore.`);
 		}

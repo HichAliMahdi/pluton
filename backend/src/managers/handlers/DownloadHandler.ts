@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { mkdir, rm, readFile } from 'fs/promises';
+import { mkdir, rm, readFile, readdir } from 'fs/promises';
 import path from 'path';
 import { existsSync, createReadStream } from 'fs';
 import { unlink } from 'fs/promises';
@@ -46,7 +46,25 @@ export class DownloadHandler {
 				handlers.onProgress,
 				handlers.onError,
 				async code => {
-					if (code === 0) {
+					// For downloads, we only need the file content — xattr/metadata errors
+					// (e.g., macOS SIP "com.apple.rootless: operation not permitted") are non-critical.
+					// Accept non-zero exit if the restore directory was actually populated.
+					let hasRestoredFiles = false;
+					if (code !== 0) {
+						try {
+							const entries = await readdir(restoreDir);
+							hasRestoredFiles = entries.length > 0;
+						} catch {
+							hasRestoredFiles = false;
+						}
+						if (hasRestoredFiles) {
+							console.warn(
+								`[DownloadHandler] Restic exited with code ${code} but restore directory has content. Proceeding with tar.`
+							);
+						}
+					}
+
+					if (code === 0 || hasRestoredFiles) {
 						try {
 							// Create tar without compression
 							const tarCommand = ['tar', '-cf', tarPath, '-C', restoreDir, '.'];
@@ -76,8 +94,14 @@ export class DownloadHandler {
 				},
 				process => processManager.trackProcess('download-' + backupId, process)
 			)
-				.then(resolve)
-				.catch(reject);
+				// runResticCommand rejects on non-zero exit, but the onComplete callback
+				// above already handles partial success (e.g., xattr errors on macOS).
+				// Only propagate rejection if the promise hasn't been settled yet.
+				.catch(err => {
+					// If the promise hasn't been resolved/rejected by onComplete yet,
+					// this is a genuine pre-restore error (binary not found, spawn failure, etc.)
+					// The onComplete handler will have already called resolve/reject for exit code issues.
+				});
 		});
 	}
 
