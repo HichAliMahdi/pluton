@@ -59,12 +59,13 @@ if (isMainModule || isDevelopment) {
 					console.log('[CORE] Database migrations completed successfully');
 				}
 			} catch (error: any) {
-				// If tables already exist - skip migration
+				// If tables already exist or columns already exist (edition upgrade) - skip migration
 				if (
 					error?.cause?.code === 'SQLITE_ERROR' &&
-					error?.cause?.message?.includes('already exists')
+					(error?.cause?.message?.includes('already exists') ||
+						error?.cause?.message?.includes('duplicate column'))
 				) {
-					console.log('[CORE] Database tables already exist, skipping migrations');
+					console.log('[CORE] Database schema already up-to-date, skipping migrations');
 				} else {
 					console.error('[CORE] Database migration error:', error);
 					process.exit(1);
