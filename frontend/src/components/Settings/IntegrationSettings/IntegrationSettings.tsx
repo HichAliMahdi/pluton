@@ -19,12 +19,19 @@ const IntegrationSettings = ({ settingsID, settings, onUpdate }: IntegrationSett
 
    const validationMutation = useValidateIntegration();
 
-   console.log('smtp :', smtp);
+   const onIntegrationUpdate = (key: string, intSettings: Record<string, any>) => {
+      console.log('onIntegrationUpdate :', key, intSettings);
+      onUpdate({ ...integrationSettings, [key]: { ...integrationSettings[key], ...intSettings } });
+   };
 
    return (
       <div className={classes.integrations}>
          <div>
-            <SMTPSettings settings={smtp} onUpdate={onUpdate} showTestModal={setShowEmailTestModal} />
+            <SMTPSettings
+               settings={smtp}
+               onUpdate={(iSettings) => onIntegrationUpdate('smtp', iSettings)}
+               showTestModal={(type) => setShowEmailTestModal(type)}
+            />
          </div>
          {showEmailTestModal && (
             <ActionModal
