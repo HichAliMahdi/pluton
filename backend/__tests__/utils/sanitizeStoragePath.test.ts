@@ -200,4 +200,57 @@ describe('sanitizeStoragePath', () => {
 			}
 		});
 	});
+
+	describe('cross-platform targetOS parameter', () => {
+		it('should preserve Linux absolute paths when targetOS is linux', () => {
+			const result = sanitizeStoragePath('/var/home/backups', 'local', 'linux');
+			expect(result).toBe('/var/home/backups');
+			expect(result.startsWith('/')).toBe(true);
+		});
+
+		it('should not prepend a Windows drive letter when targetOS is linux', () => {
+			const result = sanitizeStoragePath('/var/lib/data', 'local', 'linux');
+			expect(result).not.toMatch(/^[A-Z]:/i);
+			expect(result).toBe('/var/lib/data');
+		});
+
+		it('should handle targetOS darwin as posix paths', () => {
+			const result = sanitizeStoragePath('/Users/admin/backups', 'local', 'darwin');
+			expect(result).toBe('/Users/admin/backups');
+			expect(result.startsWith('/')).toBe(true);
+		});
+
+		it('should handle targetOS windows with Windows-style paths', () => {
+			const result = sanitizeStoragePath('C:\\Users\\admin\\backups', 'local', 'windows');
+			expect(result).toContain('Users');
+			expect(result).toContain('admin');
+		});
+
+		it('should handle targetOS win32 as an alias for windows', () => {
+			const result = sanitizeStoragePath('C:\\ProgramData\\backups', 'local', 'win32');
+			expect(result).toContain('ProgramData');
+		});
+
+		it('should still reject directory traversal with targetOS set', () => {
+			expect(() => sanitizeStoragePath('../etc/passwd', 'local', 'linux')).toThrow(AppError);
+			expect(() => sanitizeStoragePath('..\\secret', 'local', 'windows')).toThrow(AppError);
+		});
+
+		it('should fall back to server OS behavior when targetOS is undefined', () => {
+			// Should behave identically to calling without the parameter
+			const withoutParam = sanitizeStoragePath('uploads/files', 'local');
+			const withUndefined = sanitizeStoragePath('uploads/files', 'local', undefined);
+			expect(withoutParam).toBe(withUndefined);
+		});
+
+		it('should not affect remote storage types regardless of targetOS', () => {
+			const result = sanitizeStoragePath('/bucket/path/file.txt', 's3', 'linux');
+			expect(result).toBe('bucket/path/file.txt');
+		});
+
+		it('should normalize Linux paths correctly when targetOS is linux', () => {
+			const result = sanitizeStoragePath('/var//home///backups/', 'local', 'linux');
+			expect(result).toBe('/var/home/backups');
+		});
+	});
 });

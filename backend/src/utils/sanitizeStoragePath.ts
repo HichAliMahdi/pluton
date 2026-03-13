@@ -6,10 +6,18 @@ import { AppError } from './AppError';
  * Sanitizes and formats a storage path based on the storage type and operating system.
  * @param storagePath The user-provided storage path string.
  * @param storageType The type of storage (e.g., 'local', 's3', 'b2').
+ * @param targetOS Optional OS of the target device (e.g., 'linux', 'windows', 'darwin').
+ *   When provided, path operations use the target OS conventions instead of the server's OS.
+ *   This prevents cross-platform issues such as a Windows server prepending a drive letter
+ *   to a Linux absolute path like `/var/home/xxx` → `F:/var/home/xxx`.
  * @returns A sanitized, correctly formatted path string.
  * @throws {AppError} Throws a 400 Bad Request error if the path is invalid or contains malicious sequences.
  */
-export function sanitizeStoragePath(storagePath: string, storageType: string): string {
+export function sanitizeStoragePath(
+	storagePath: string,
+	storageType: string,
+	targetOS?: string
+): string {
 	if (typeof storagePath !== 'string') {
 		// Handle cases where the input might not be a string
 		return '';
@@ -17,8 +25,15 @@ export function sanitizeStoragePath(storagePath: string, storageType: string): s
 
 	const trimmedPath = storagePath.trim();
 
+	// Determine path module based on target OS when provided,
+	// otherwise fall back to the server's native path module.
+	const isTargetWindows = targetOS
+		? targetOS === 'windows' || targetOS === 'win32'
+		: os.platform() === 'win32';
+	const pathModule = isTargetWindows ? path.win32 : path.posix;
+
 	// Normalize the path to resolve segments like '.', '..', and multiple slashes.
-	const normalizedPath = path.normalize(trimmedPath);
+	const normalizedPath = pathModule.normalize(trimmedPath);
 
 	// **Security Check:** After normalization, if ".." still exists, it's a sign of a
 	if (normalizedPath.includes('..')) {
@@ -27,11 +42,11 @@ export function sanitizeStoragePath(storagePath: string, storageType: string): s
 
 	if (storageType === 'local') {
 		// For local storage, we need a fully qualified absolute path.
-		const resolvedPath = path.resolve(normalizedPath);
+		// When targeting a remote OS, use the target path module to avoid
+		// the server's OS mangling the path (e.g., adding a Windows drive letter to a Linux path).
+		const resolvedPath = pathModule.resolve(normalizedPath);
 
-		// On non-Windows systems, we do an extra check to ensure it's a valid absolute path.
-		if (os.platform() !== 'win32' && !path.isAbsolute(resolvedPath)) {
-			// This case is unlikely after path.resolve, but it's a good defense-in-depth check.
+		if (!isTargetWindows && !pathModule.isAbsolute(resolvedPath)) {
 			throw new AppError(
 				400,
 				'Invalid path: An absolute path is required for local storage on this operating system.'
