@@ -142,12 +142,16 @@ export class DownloadHandler {
 	private createHandlers(planId: string, backupId: string) {
 		return {
 			onProgress: (data: Buffer) => {
-				const progressData = JSON.parse(data.toString());
-				this.emitter.emit('download_progress', {
-					backupId,
-					planId,
-					data: progressData,
-				});
+				try {
+					const progressData = JSON.parse(data.toString());
+					this.emitter.emit('download_progress', {
+						backupId,
+						planId,
+						data: progressData,
+					});
+				} catch (error) {
+					// Ignore JSON parse errors from non-JSON output lines
+				}
 			},
 			onError: (data: Buffer) => {
 				this.emitter.emit('download_error', {
