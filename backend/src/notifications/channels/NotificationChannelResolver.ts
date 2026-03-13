@@ -53,7 +53,6 @@ export class NotificationChannelResolver {
 			if (value && typeof value === 'string') {
 				try {
 					const decryptedValue = cryptr.decrypt(value);
-					console.log('[Decrypted]  :', fieldPath, decryptedValue);
 					setNestedValue(integrationDecrypted, fieldPath, decryptedValue);
 				} catch (error) {
 					// Handle decryption errors (e.g., if value is not encrypted)
