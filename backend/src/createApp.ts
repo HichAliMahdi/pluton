@@ -131,7 +131,7 @@ export async function createApp(): Promise<{ app: Express }> {
 			],
 			credentials: true,
 			methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-			exposedHeaders: ['X-App-Version', 'X-Server-OS'],
+			exposedHeaders: ['X-App-Version', 'X-Server-OS', 'X-Install-Type', 'X-Setup-Pending'],
 		})
 	);
 	app.use(versionMiddleware);
