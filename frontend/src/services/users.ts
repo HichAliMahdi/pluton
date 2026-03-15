@@ -65,10 +65,11 @@ export async function loginUser(credentials: LoginCredentials) {
 // Add this new hook
 export function useLogin() {
    const navigate = useNavigate();
+   const queryClient = useQueryClient();
    return useMutation({
       mutationFn: loginUser,
       onSuccess: (res) => {
-         console.log('res :', res);
+         queryClient.removeQueries({ queryKey: ['auth'] });
          if (res.totpRequired) {
             navigate('/login/verify-otp');
          } else {
