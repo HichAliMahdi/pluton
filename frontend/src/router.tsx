@@ -14,6 +14,24 @@ import Footer from './components/App/Footer/Footer';
 import NotFoundRoute from './routes/NotFoundRoute/NotFoundRoute';
 import Icon from './components/common/Icon/Icon';
 
+function PublicRoute({ children }: { children: React.ReactNode }) {
+   const { data: authData, isLoading: authLoading } = useAuth();
+
+   if (authLoading) {
+      return (
+         <div className="loadingScreen">
+            <Icon size={60} type="loading" />
+         </div>
+      );
+   }
+
+   if (authData) {
+      return <Navigate to="/" replace />;
+   }
+
+   return <>{children}</>;
+}
+
 function ProtectedLayout() {
    // Check setup status FIRST - this endpoint doesn't require auth
    // and tells us if we're in binary mode and if setup is pending
@@ -74,7 +92,14 @@ export function AppRoutes() {
             <Route path={'plan/:id'} element={<PlanSingle />} />
             <Route path="*" element={<NotFoundRoute />} />
          </Route>
-         <Route path="login" element={<Login />} />
+         <Route
+            path="login"
+            element={
+               <PublicRoute>
+                  <Login />
+               </PublicRoute>
+            }
+         />
          <Route path="setup" element={<Setup />} />
       </Routes>
    );

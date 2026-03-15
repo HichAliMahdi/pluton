@@ -1,5 +1,5 @@
 import { API_URL } from '../utils/constants';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 
 interface LoginCredentials {
@@ -87,9 +87,11 @@ export async function logoutUser() {
 
 export function useLogout() {
    const navigate = useNavigate();
+   const queryClient = useQueryClient();
    return useMutation({
       mutationFn: logoutUser,
       onSuccess: () => {
+         queryClient.removeQueries({ queryKey: ['auth'] });
          navigate('/login');
       },
    });
