@@ -221,8 +221,8 @@ const PlanForm = ({
                      <label className={classes.label}>Backup Destination*</label>
                      {!planSettings.storage.name && <span className={classes.fieldErrorLabel}>{'Required'}</span>}
                      <StoragePicker
-                        storagePath={storagePath}
-                        storageId={storageId}
+                        storagePath={storagePath || planSettings.storagePath}
+                        storageId={storageId || planSettings.storage?.id || ''}
                         deviceId={planSettings.sourceId || 'main'}
                         disabled={type === 'edit' ? true : false}
                         onUpdate={(s: { storage: { name: string; id: string; type: string }; path: string }) =>
