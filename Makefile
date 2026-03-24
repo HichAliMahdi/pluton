@@ -1,4 +1,4 @@
-.PHONY: help build run clean clean-all clean-cache clean-build
+.PHONY: help build run build-agents build-agents-only clean clean-all clean-cache clean-build
 
 help:
 	@echo "Usage: make <target>"
@@ -6,6 +6,8 @@ help:
 	@echo "Targets:"
 	@echo "  help        Show this help message"
 	@echo "  build       Build all workspace packages"
+	@echo "  build-agents Build workspace packages + agent installers (.exe/.deb)"
+	@echo "  build-agents-only Build only the downloadable agent installers (.exe/.deb)"
 	@echo "  run         Run backend and frontend in development mode"
 	@echo "  clean       Remove build + Pluton runtime data (plans, backups, caches)"
 	@echo "  clean-build Remove build artifacts only"
@@ -18,6 +20,22 @@ build:
 		pnpm install --frozen-lockfile; \
 	fi
 	pnpm build
+
+build-agents: build
+	@echo "Building downloadable agent installers..."
+	pnpm build:agents
+	@echo "Agent installers generated:"
+	@ls -lh installers/windows/pluton-agent.exe installers/linux/pluton-agent.deb 2>/dev/null || true
+
+build-agents-only:
+	@if [ ! -d node_modules ]; then \
+		echo "node_modules not found, installing dependencies..."; \
+		pnpm install --frozen-lockfile; \
+	fi
+	@echo "Building downloadable agent installers only..."
+	pnpm build:agents
+	@echo "Agent installers generated:"
+	@ls -lh installers/windows/pluton-agent.exe installers/linux/pluton-agent.deb 2>/dev/null || true
 
 run:
 	@if [ ! -d node_modules ]; then \

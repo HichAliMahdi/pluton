@@ -59,6 +59,20 @@ const SideNav = () => {
                   </span>
                )}
             </NavLink>
+            <NavLink to="/agents" end aria-label="Agents">
+               {() => (
+                  <span
+                     className={classes.navMenuLabel}
+                     data-tooltip-id="appTooltip"
+                     data-tooltip-content="Agents"
+                     data-tooltip-place="left"
+                     data-tooltip-delay-show={500}
+                     data-tooltip-hidden={isMobile()}
+                  >
+                     <Icon type="devices" size={26} />
+                  </span>
+               )}
+            </NavLink>
             <NavLink to="/settings" end aria-label="Settings">
                {() => (
                   <span

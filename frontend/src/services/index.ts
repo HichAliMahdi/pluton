@@ -9,3 +9,4 @@ export * from './restores';
 export * from './settings';
 export * from './storage';
 export * from './users';
+export * from './agents';

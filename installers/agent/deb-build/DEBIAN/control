@@ -1,0 +1,7 @@
+Package: pluton-agent
+Version: 0.1.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: Pluton <support@plutonhq.com>
+Description: Pluton remote backup agent

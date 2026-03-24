@@ -8,3 +8,4 @@ export { default as Settings } from './Settings/Settings';
 export { default as Setup } from './Setup/Setup';
 export { default as Sources } from './Sources/Sources';
 export { default as Storages } from './Storages/Storages';
+export { default as Agents } from './Agents/Agents';

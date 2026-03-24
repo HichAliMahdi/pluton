@@ -15,12 +15,14 @@ import { createSettingsRouter } from './routes/settings';
 import { createHealthRouter } from './routes/health';
 import { createSetupRouter } from './routes/setup';
 import { createSourceRouter } from './routes/sources';
+import { createAgentRouter } from './routes/agents';
 import { PlanController } from './controllers/PlanController';
 import { DeviceController } from './controllers/DeviceController';
 import { StorageController } from './controllers/StorageController';
 import { RestoreController } from './controllers/RestoreController';
 import { UserController } from './controllers/UserController';
 import { SettingsController } from './controllers/SettingsController';
+import { AgentController } from './controllers/AgentController';
 import { SetupController } from './controllers/SetupController';
 import { createBackupRouter } from './routes/backups';
 import { BackupController } from './controllers/BackupController';
@@ -34,6 +36,7 @@ import { RestoreStore } from './stores/RestoreStore';
 import { SettingsStore } from './stores/SettingsStore';
 import { StorageStore } from './stores/StorageStore';
 import { DeviceStore } from './stores/DeviceStore';
+import { AgentStore } from './stores/AgentStore';
 import { BaseBackupManager } from './managers';
 import { BackupEventListener } from './services/listeners/BackupEventListener';
 import { ReplicationEventListener } from './services/listeners/ReplicationEventListener';
@@ -53,6 +56,7 @@ import { jobProcessor } from './jobs/JobProcessor';
 import { initializeLogger } from './utils/logger';
 import { configService } from './services/ConfigService';
 import { BaseRestoreManager } from './managers/BaseRestoreManager';
+import { AgentService } from './services/AgentService';
 
 export async function createApp(): Promise<{ app: Express }> {
 	// Initialize Logger
@@ -65,6 +69,7 @@ export async function createApp(): Promise<{ app: Express }> {
 	const deviceStore = new DeviceStore(db);
 	const restoreStore = new RestoreStore(db);
 	const settingsStore = new SettingsStore(db);
+	const agentStore = new AgentStore();
 
 	// Local Agents
 	const localPlanAgent = new BaseBackupManager();
@@ -112,6 +117,7 @@ export async function createApp(): Promise<{ app: Express }> {
 	);
 	const settingsService = new SettingsService(settingsStore);
 	const sourceService = new ServerSourceService();
+	const agentService = new AgentService(agentStore);
 
 	// API Route Controllers
 	const planController = new PlanController(planService);
@@ -123,6 +129,7 @@ export async function createApp(): Promise<{ app: Express }> {
 	const userController = new UserController();
 	const setupController = new SetupController();
 	const sourceController = new ServerSourceController(sourceService);
+	const agentController = new AgentController(agentService);
 
 	console.log('process.env.APP_URL :', process.env.APP_URL);
 	console.log(' configService.config.APP_URL:', configService.config.APP_URL);
@@ -222,6 +229,7 @@ export async function createApp(): Promise<{ app: Express }> {
 	app.use('/api/restores', createRestoreRouter(restoreController));
 	app.use('/api/settings', createSettingsRouter(settingsController));
 	app.use('/api/sources', createSourceRouter(sourceController));
+	app.use('/api/agents', createAgentRouter(agentController));
 	app.use('/api/health', createHealthRouter());
 
 	// For any other request that doesn't match an API route or a static file,
