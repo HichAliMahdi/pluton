@@ -100,6 +100,8 @@ export interface ProviderConfig {
 	setup: (credentials: Record<string, string>, type?: string) => string[];
 }
 
+const getSecret = (creds: Record<string, string>) => creds.pass || creds.password || '';
+
 export const providers: Record<string, ProviderConfig> = {
 	'local': {
 		name: 'Local',
@@ -598,7 +600,7 @@ export const providers: Record<string, ProviderConfig> = {
 			'username',
 			creds.username,
 			'password',
-			`$(rclone obscure ${creds.password})`,
+			getSecret(creds),
 		],
 		features: providerFeatures['smb'],
 	},
@@ -613,7 +615,7 @@ export const providers: Record<string, ProviderConfig> = {
 			'user',
 			creds.user,
 			'pass',
-			`$(rclone obscure ${creds.password})`,
+			getSecret(creds),
 		],
 		features: providerFeatures['sftp'],
 	},
@@ -628,7 +630,7 @@ export const providers: Record<string, ProviderConfig> = {
 			'user',
 			creds.user,
 			'pass',
-			`$(rclone obscure ${creds.password})`,
+			getSecret(creds),
 		],
 		features: providerFeatures['ftp'],
 	},
@@ -643,7 +645,7 @@ export const providers: Record<string, ProviderConfig> = {
 			'user',
 			creds.user,
 			'pass',
-			`$(rclone obscure ${creds.password})`,
+			getSecret(creds),
 		],
 		features: providerFeatures['webdav'],
 	},
