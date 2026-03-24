@@ -33,6 +33,18 @@ const PlanItem = ({ plan, layout = 'list' }: PlanItemProps) => {
       method = 'backup',
    } = plan;
 
+   const isDatabaseSource = plan.sourceType === 'database' && !!sourceConfig?.database;
+   const sourceCount = sourceConfig?.includes?.length
+      ? sourceConfig.includes.length
+      : isDatabaseSource
+         ? 1
+         : 0;
+   const sourceTooltipHtml = isDatabaseSource
+      ? `<div><strong>Database Source</strong></div><div>Engine: ${sourceConfig.database?.engine}</div><div>Host: ${sourceConfig.database?.host}:${sourceConfig.database?.port}</div><div>Database: ${sourceConfig.database?.database}</div>`
+      : sourceConfig?.includes
+         ? sourceConfig.includes.map((p) => `<div>${p}</div>`).join('')
+         : '';
+
    const { interval = { type: 'daily', time: '10:00AM' }, encryption = false, compression = false } = settings;
    const [showSettings, setShowSettings] = useState(false);
 
@@ -148,14 +160,14 @@ const PlanItem = ({ plan, layout = 'list' }: PlanItemProps) => {
                      <span
                         data-tooltip-id="htmlToolTip"
                         data-tooltip-place="top"
-                        data-tooltip-html={sourceConfig?.includes ? sourceConfig.includes.map((p) => `<div>${p}</div>`).join('') : ''}
+                        data-tooltip-html={sourceTooltipHtml}
                      >
                         {device?.name && (
                            <>
                               <Icon type={device.id === 'main' ? 'computer' : 'computer-remote'} size={13} /> {device.name}
                            </>
                         )}
-                        <span className={classes.sourceCount}>{sourceConfig.includes.length}</span>
+                        <span className={classes.sourceCount}>{sourceCount}</span>
                      </span>{' '}
                      {'-->'}
                      <PlanStorageInfo replicationSettings={plan.settings.replication} storage={storage} storagePath={plan.storagePath} />
@@ -177,7 +189,6 @@ const PlanItem = ({ plan, layout = 'list' }: PlanItemProps) => {
                <Icon type="interval" size={14} /> <i>{planIntervalName(interval)}</i>
             </div>
             <div
-               className={classes.time}
                data-tooltip-id="appTooltip"
                data-tooltip-content={lastBackupTime ? `Last backed up on ${formatDateTime(lastBackupTime as string)}` : "Hasn't been backed up yet"}
                data-tooltip-place="top"

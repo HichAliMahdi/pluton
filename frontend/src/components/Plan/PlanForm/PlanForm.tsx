@@ -215,7 +215,15 @@ const PlanForm = ({
                      plan={planSettings}
                      onUpdate={(plan) => onPlanSettingsChange({ ...plan })}
                      isEditing={type === 'edit' ? true : false}
-                     error={planSettings.sourceConfig.includes.length === 0 ? 'Required' : ''}
+                     error={
+                        planSettings.sourceType === 'database'
+                           ? !planSettings.sourceConfig.database
+                              ? 'Required'
+                              : ''
+                           : planSettings.sourceConfig.includes.length === 0
+                              ? 'Required'
+                              : ''
+                     }
                   />
                   <div className={classes.field}>
                      <label className={classes.label}>Backup Destination*</label>

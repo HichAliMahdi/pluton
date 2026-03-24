@@ -53,9 +53,17 @@ export function isPlanSettingsValid(newPlan: NewPlanSettings, step: number | fal
       return false;
    }
    if (step === 2 || step === false) {
-      if (newPlan.sourceConfig.includes.length === 0) {
-         toast.error(`Sources are required`);
-         return false;
+      if (newPlan.sourceType === 'database') {
+         const db = newPlan.sourceConfig.database;
+         if (!db || !db.engine || !db.host || !db.user || !db.password || !db.database || !db.port) {
+            toast.error(`Database source settings are required`);
+            return false;
+         }
+      } else {
+         if (newPlan.sourceConfig.includes.length === 0) {
+            toast.error(`Sources are required`);
+            return false;
+         }
       }
       if (newPlan.storage.id === 'local' && newPlan.storagePath === '') {
          toast.error(`Storage Path is required`);

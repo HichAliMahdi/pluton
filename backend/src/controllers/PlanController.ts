@@ -68,7 +68,6 @@ export class PlanController {
 
 	async createPlan(req: Request, res: Response): Promise<void> {
 		const planPayload: undefined | NewPlanReq = req.body;
-		console.log('planPayload :', planPayload);
 		try {
 			if (
 				!planPayload ||
@@ -339,6 +338,32 @@ export class PlanController {
 			res.status(appError.statusCode || 500).json({
 				success: false,
 				error: `Failed to download logs: ${appError.message}`,
+			});
+		}
+	}
+
+	async testDatabaseConnection(req: Request, res: Response): Promise<void> {
+		try {
+			const dbConfig = req.body;
+			if (!dbConfig || !dbConfig.engine || !dbConfig.host || !dbConfig.port || !dbConfig.user || !dbConfig.password || !dbConfig.database) {
+				res.status(400).json({
+					success: false,
+					error: 'Missing required database configuration fields'
+				});
+				return;
+			}
+
+			const result = await this.planService.testDatabaseConnection(dbConfig);
+			res.status(200).json({
+				success: true,
+				message: result.message,
+				result: result
+			});
+		} catch (error: unknown) {
+			const appError = error as AppError;
+			res.status(200).json({
+				success: false,
+				error: appError?.message || 'Failed to connect to database'
 			});
 		}
 	}

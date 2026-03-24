@@ -142,18 +142,31 @@ export class BaseBackupManager extends EventEmitter {
 		}
 	): Promise<{ success: boolean; result: string }> {
 		try {
+			const isPathAlreadyMissing = (message: string): boolean => {
+				const lowered = (message || '').toLowerCase();
+				return lowered.includes('directory not found') || lowered.includes('not found');
+			};
+
 			// Stop all cron jobs for this backup and remove the cron schedule
 			await this.cronManager.removeSchedule(planId);
 			let removeResult = 'Successfully Removed';
 
 			// Remove the primary storage data when necessary
 			if (options.storagePath && options.removeRemoteData) {
-				const output = await runRcloneCommand([
-					'purge',
-					`${options.storageName}:${options.storagePath}`,
-				]);
-				console.log('rclone removeResult :', output);
-				removeResult += output;
+				try {
+					const output = await runRcloneCommand([
+						'purge',
+						`${options.storageName}:${options.storagePath}`,
+					]);
+					console.log('rclone removeResult :', output);
+					removeResult += output;
+				} catch (error: any) {
+					if (isPathAlreadyMissing(error?.message || '')) {
+						removeResult += ' | Primary storage path already missing (nothing to purge)';
+					} else {
+						throw error;
+					}
+				}
 			}
 
 			// Also remove data from replication storages
@@ -167,11 +180,15 @@ export class BaseBackupManager extends EventEmitter {
 						console.log(`rclone replication removeResult (${replica.storageName}):`, output);
 						removeResult += ` | Replication ${replica.storageName}: ${output}`;
 					} catch (error: any) {
-						// Log but don't fail the entire removal if a replication storage purge fails
-						console.warn(
-							`[removeBackup] Failed to purge replication storage ${replica.storageName}:${replica.storagePath}: ${error.message}`
-						);
-						removeResult += ` | Replication ${replica.storageName} purge failed: ${error.message}`;
+						if (isPathAlreadyMissing(error?.message || '')) {
+							removeResult += ` | Replication ${replica.storageName} path already missing (nothing to purge)`;
+						} else {
+							// Log but don't fail the entire removal if a replication storage purge fails
+							console.warn(
+								`[removeBackup] Failed to purge replication storage ${replica.storageName}:${replica.storagePath}: ${error.message}`
+							);
+							removeResult += ` | Replication ${replica.storageName} purge failed: ${error.message}`;
+						}
 					}
 				}
 			}
@@ -456,6 +473,7 @@ export class BaseBackupManager extends EventEmitter {
 			title,
 			sourceConfig,
 			sourceId,
+			sourceType,
 		} = options;
 		const backupExecOpts = {
 			id,
@@ -464,6 +482,7 @@ export class BaseBackupManager extends EventEmitter {
 			cronExpression,
 			sourceConfig,
 			sourceId,
+			sourceType,
 			storageId,
 			storage,
 			storagePath,

@@ -43,7 +43,12 @@ export class BackupEventService {
 			'existingBackup :',
 			existingBackup ? existingBackup.id : 'No existing backup found'
 		);
-		if (existingBackup && existingBackup.sourceId === 'main' && this.localAgent) {
+		const shouldUseLocalAgentForExisting =
+			existingBackup &&
+			(this.localAgent
+				? existingBackup.sourceType !== 'device' || existingBackup.sourceId === 'main'
+				: false);
+		if (shouldUseLocalAgentForExisting && this.localAgent) {
 			// This is a RETRY. Re-initialize the state for the new attempt.
 			await this.backupStore.update(backupId, {
 				inProgress: true,
@@ -117,7 +122,7 @@ export class BackupEventService {
 				}
 
 				// If it's local agent, emit the event and initialize the progress file
-				if (sourceId === 'main' && this.localAgent) {
+				if (this.localAgent && (sourceType !== 'device' || sourceId === 'main')) {
 					this.localAgent.emit('backup_created', {
 						planId: planId,
 						backupId: backup.id,

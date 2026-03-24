@@ -14,15 +14,35 @@ interface PlanStatsProps {
 const PlanStats = ({ plan, isSync, lastBackupItem }: PlanStatsProps) => {
    const { sourceConfig, storage, storagePath, isActive, settings } = plan;
    const { interval } = settings;
+   const isDatabaseSource = plan.sourceType === 'database' && !!sourceConfig?.database;
+   const sourceCount = sourceConfig?.includes?.length
+      ? sourceConfig.includes.length
+      : isDatabaseSource
+         ? 1
+         : 0;
 
-   const totalFiles = lastBackupItem?.totalFiles || 0;
+   const totalFiles =
+      typeof lastBackupItem?.totalFiles === 'number'
+         ? lastBackupItem.totalFiles
+         : isDatabaseSource
+            ? 1
+            : 0;
    const totalSize = lastBackupItem?.totalSize || 0;
 
    const sourceTooltipHTML = (sources: Plan['sourceConfig']) => {
       let html = '';
+      if (plan.sourceType === 'database' && sources?.database) {
+         const db = sources.database;
+         html += `<div><strong>Database Source</strong></div>`;
+         html += `<div>Engine: ${db.engine}</div>`;
+         html += `<div>Host: ${db.host}:${db.port}</div>`;
+         html += `<div>Database: ${db.database}</div>`;
+      }
       if (sources && sources.includes && sources.includes.length > 0) {
          html += `<div><strong>Includes</strong></div>`;
-         html += sources.includes.map((p) => `<div>${plan.device.name} -> ${p}</div>`).join('');
+         html += sources.includes
+            .map((p) => `<div>${plan.device?.name || 'device'} -> ${p}</div>`)
+            .join('');
       }
       if (sources && sources.excludes && sources.excludes.length > 0) {
          html += `<div><strong>Excludes</strong></div>`;
@@ -40,7 +60,7 @@ const PlanStats = ({ plan, isSync, lastBackupItem }: PlanStatsProps) => {
             <div className={classes.sourceContent}>
                <div data-tooltip-id="htmlToolTip" data-tooltip-place="top" data-tooltip-html={sourceTooltipHTML(sourceConfig)}>
                   <Icon type="folders" size={18} />
-                  <span>{sourceConfig?.includes.length} Sources</span>
+                  <span>{sourceCount} Sources</span>
                </div>
                <div
                   data-tooltip-id="htmlToolTip"

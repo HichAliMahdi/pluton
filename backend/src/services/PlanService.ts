@@ -1,5 +1,6 @@
 import { createReadStream } from 'fs';
 import { access, constants, readFile } from 'fs/promises';
+import { execSync } from 'child_process';
 import { BaseBackupManager } from '../managers/BaseBackupManager';
 import { PlanStore } from '../stores/PlanStore';
 import { BackupStore } from '../stores/BackupStore';
@@ -35,7 +36,7 @@ export class PlanService {
 	) {}
 
 	getStrategy(plan: NewPlan | Plan): BackupStrategy | any {
-		const isRemote = plan.sourceId !== 'main';
+		const isRemote = plan.sourceType === 'device' && plan.sourceId !== 'main';
 		return isRemote
 			? new RemoteBackupStrategy(plan.sourceId)
 			: new LocalBackupStrategy(this.localAgent);
@@ -90,14 +91,16 @@ export class PlanService {
 			throw new NotFoundError('Storage not found.');
 		}
 
-		// Fetch the device early so we can use its OS for cross-platform path sanitization.
-		// Without this, a Windows server would mangle Linux paths (e.g., /var/home → F:/var/home).
-		const device = await this.deviceStore.getById(sourceId);
-		if (!device) {
-			throw new NotFoundError('Source device not found');
+		// Resolve source target OS only for device sources.
+		let targetOS: string | undefined = undefined;
+		if (sourceType === 'device') {
+			const device = await this.deviceStore.getById(sourceId);
+			if (!device) {
+				throw new NotFoundError('Source device not found');
+			}
+			const isRemote = sourceId !== 'main';
+			targetOS = isRemote ? device.os ?? undefined : undefined;
 		}
-		const isRemote = sourceId !== 'main';
-		const targetOS = isRemote ? device.os ?? undefined : undefined;
 
 		const theStoragePath = sanitizeStoragePath(storagePath, planStorage.type, targetOS);
 		let newPlanData: NewPlan = {
@@ -205,7 +208,7 @@ export class PlanService {
 			const strategy = this.getStrategy(updatedPlan) as BackupStrategy;
 			const updateRes = await strategy.updateBackup(planId, backupScheduleOptions);
 			if (!updateRes.success) {
-				if (updatedPlan.sourceId !== 'main') {
+				if (updatedPlan.sourceType === 'device' && updatedPlan.sourceId !== 'main') {
 					// Revert the update in the database if remote update fails to avoid inconsistencies
 					await this.planStore.update(planId, currentPlan);
 				}
@@ -572,5 +575,119 @@ export class PlanService {
 				};
 			})
 			.filter(s => s.storageName && s.storagePath);
+	}
+
+	async testDatabaseConnection(dbConfig: {
+		engine: 'mysql' | 'postgres' | 'mongodb';
+		host: string;
+		port: number;
+		user: string;
+		password: string;
+		database: string;
+	}): Promise<{ message: string; engine: string }> {
+		try {
+			if (dbConfig.engine === 'mysql') {
+				// Use mysqldump because the backup path also depends on this binary.
+				const command = `mysqldump --host "${dbConfig.host}" --port ${dbConfig.port} --user "${dbConfig.user}" --no-data --skip-comments --no-tablespaces "${dbConfig.database}"`;
+				try {
+					execSync(command, {
+						timeout: 8000,
+						encoding: 'utf8',
+						env: { ...process.env, MYSQL_PWD: dbConfig.password },
+					});
+					return {
+						message: 'Successfully connected to MySQL database',
+						engine: 'mysql',
+					};
+				} catch (error: any) {
+					const errorMsg = String(error?.stderr || error?.message || error || '');
+					if (
+						errorMsg.includes('mysqldump: not found') ||
+						errorMsg.includes('/bin/sh: 1: mysqldump: not found')
+					) {
+						throw new Error(
+							'MySQL tools are not installed on this machine. Install a MySQL client package that provides mysqldump (for Ubuntu/Debian: apt install mysql-client or mariadb-client).'
+						);
+					}
+					if (errorMsg.includes('Unknown database')) {
+						throw new Error(`MySQL: Database "${dbConfig.database}" does not exist`);
+					} else if (errorMsg.includes('Access denied')) {
+						throw new Error(`MySQL: Invalid credentials or no permission for user "${dbConfig.user}"`);
+					} else if (
+						errorMsg.includes('Can\'t connect') ||
+						errorMsg.includes('Connection refused') ||
+						errorMsg.includes('timed out')
+					) {
+						throw new Error(`MySQL: Cannot connect to ${dbConfig.host}:${dbConfig.port}. Check host and port.`);
+					}
+					throw new Error('MySQL connection failed. Check your credentials and database configuration.');
+				}
+			} else if (dbConfig.engine === 'postgres') {
+				// Use environment variable for password instead of command-line argument for security
+				const command = `psql --host "${dbConfig.host}" --port ${dbConfig.port} --username "${dbConfig.user}" --dbname "${dbConfig.database}" -c "SELECT 1"`;
+				try {
+					execSync(command, {
+						timeout: 8000,
+						encoding: 'utf8',
+						env: { ...process.env, PGPASSWORD: dbConfig.password },
+					});
+					return {
+						message: 'Successfully connected to PostgreSQL database',
+						engine: 'postgres',
+					};
+				} catch (error: any) {
+					const errorMsg = String(error?.stderr || error?.message || error || '');
+					if (
+						errorMsg.includes('psql: not found') ||
+						errorMsg.includes('/bin/sh: 1: psql: not found')
+					) {
+						throw new Error(
+							'PostgreSQL tools are not installed on this machine. Install a package that provides psql (for Ubuntu/Debian: apt install postgresql-client).'
+						);
+					}
+					if (errorMsg.includes('does not exist')) {
+						throw new Error(`PostgreSQL: Database "${dbConfig.database}" does not exist`);
+					} else if (errorMsg.includes('password authentication failed')) {
+						throw new Error(`PostgreSQL: Invalid credentials for user "${dbConfig.user}"`);
+					} else if (errorMsg.includes('could not translate host name')) {
+						throw new Error(`PostgreSQL: Cannot resolve hostname ${dbConfig.host}`);
+					} else if (errorMsg.includes('connection refused')) {
+						throw new Error(`PostgreSQL: Cannot connect to ${dbConfig.host}:${dbConfig.port}. Check host and port.`);
+					}
+					throw new Error('PostgreSQL connection failed. Check your credentials and database configuration.');
+				}
+			} else if (dbConfig.engine === 'mongodb') {
+				// For MongoDB, we need to use mongosh with connection string
+				const mongoUrl = `mongodb://${dbConfig.user}:${encodeURIComponent(dbConfig.password)}@${dbConfig.host}:${dbConfig.port}/${dbConfig.database}?serverSelectionTimeoutMS=5000`;
+				const command = `mongosh "${mongoUrl}" --eval "db.adminCommand('ping')" --quiet`;
+				try {
+					execSync(command, { timeout: 8000, encoding: 'utf8' });
+					return {
+						message: 'Successfully connected to MongoDB database',
+						engine: 'mongodb',
+					};
+				} catch (error: any) {
+					const errorMsg = String(error?.stderr || error?.message || error || '');
+					if (
+						errorMsg.includes('mongosh: not found') ||
+						errorMsg.includes('/bin/sh: 1: mongosh: not found')
+					) {
+						throw new Error(
+							'MongoDB tools are not installed on this machine. Install a package that provides mongosh/mongodump.'
+						);
+					}
+					if (errorMsg.includes('authentication failed')) {
+						throw new Error(`MongoDB: Invalid credentials for user "${dbConfig.user}"`);
+					} else if (errorMsg.includes('connect ECONNREFUSED') || errorMsg.includes('getaddrinfo ENOTFOUND')) {
+						throw new Error(`MongoDB: Cannot connect to ${dbConfig.host}:${dbConfig.port}. Check host and port.`);
+					}
+					throw new Error('MongoDB connection failed. Check your credentials and database configuration.');
+				}
+			}
+
+			throw new Error('Unsupported database engine');
+		} catch (error: any) {
+			throw new Error(error?.message || 'Database connection test failed');
+		}
 	}
 }

@@ -19,8 +19,12 @@ export class RestoreService {
 		protected storageStore: StorageStore
 	) {}
 
-	getRestoreStrategy(deviceId: string, method: string): RestoreStrategy {
-		const isRemote = deviceId !== 'main';
+	getRestoreStrategy(
+		deviceId: string,
+		method: string,
+		sourceType: string = 'device'
+	): RestoreStrategy {
+		const isRemote = sourceType === 'device' && deviceId !== 'main';
 		return isRemote ? new RemoteStrategy(deviceId) : new LocalStrategy(this.localAgent);
 	}
 
@@ -42,7 +46,13 @@ export class RestoreService {
 		if (!restore) {
 			throw new NotFoundError('Restore not found');
 		}
-		const strategy = this.getRestoreStrategy(restore.sourceId, restore.method);
+		const restoreDevice =
+			restore.sourceType === 'device' ? (restore.sourceId as string) || 'main' : 'main';
+		const strategy = this.getRestoreStrategy(
+			restoreDevice,
+			restore.method,
+			restore.sourceType || 'device'
+		);
 		const statsRes = await strategy.getRestoreStats(restore.planId as string, restoreId);
 
 		return statsRes;
@@ -71,7 +81,8 @@ export class RestoreService {
 			if (!plan) {
 				throw new Error('Plan not found');
 			}
-			const backupDevice = backup.sourceId ? backup.sourceId : 'main';
+			const backupDevice =
+				backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
 			const storageID = backup.storageId;
 			let storagePath = backup.storagePath;
 
@@ -93,7 +104,11 @@ export class RestoreService {
 				}
 			}
 
-			const strategy = this.getRestoreStrategy(backupDevice, backup.method);
+			const strategy = this.getRestoreStrategy(
+				backupDevice,
+				backup.method,
+				backup.sourceType || 'device'
+			);
 			const restoreResult = await strategy.getRestoreSnapshotStats(
 				backup.planId as string,
 				backup.id,
@@ -136,7 +151,8 @@ export class RestoreService {
 				throw new Error('A Restoration is already in progress for this Plan');
 			}
 
-			const backupDevice = backup.sourceId ? backup.sourceId : 'main';
+			const backupDevice =
+				backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
 			const storageID = backup.storageId;
 			let storagePath = backup.storagePath;
 			let storageName = await this.getStorageName(storageID as string);
@@ -157,7 +173,11 @@ export class RestoreService {
 				}
 			}
 
-			const strategy = this.getRestoreStrategy(backupDevice, plan.method);
+			const strategy = this.getRestoreStrategy(
+				backupDevice,
+				plan.method,
+				backup.sourceType || 'device'
+			);
 			const restoreResult = await strategy.restoreSnapshot(backup.planId as string, backup.id, {
 				planId: backup.planId as string,
 				storageName: storageName,
@@ -187,7 +207,13 @@ export class RestoreService {
 		if (!restore) {
 			throw new NotFoundError('Restore not found');
 		}
-		const strategy = this.getRestoreStrategy(restore.sourceId as string, restore.method);
+		const restoreDevice =
+			restore.sourceType === 'device' ? (restore.sourceId as string) || 'main' : 'main';
+		const strategy = this.getRestoreStrategy(
+			restoreDevice,
+			restore.method,
+			restore.sourceType || 'device'
+		);
 		const cancelResult = await strategy.cancelSnapshotRestore(restore.planId as string, restoreId);
 		console.log('cancelResult :', cancelResult);
 		await this.restoreStore.update(restoreId, {
@@ -203,7 +229,13 @@ export class RestoreService {
 		if (!restore) {
 			throw new NotFoundError('Restore not found');
 		}
-		const strategy = this.getRestoreStrategy(restore.sourceId as string, restore.method);
+		const restoreDevice =
+			restore.sourceType === 'device' ? (restore.sourceId as string) || 'main' : 'main';
+		const strategy = this.getRestoreStrategy(
+			restoreDevice,
+			restore.method,
+			restore.sourceType || 'device'
+		);
 		const progressResult = await strategy.getRestoreProgress(restore.planId as string, restoreId);
 		if (!progressResult.success) {
 			throw new Error((progressResult.result as string) || 'Failed to get Restore Progress');

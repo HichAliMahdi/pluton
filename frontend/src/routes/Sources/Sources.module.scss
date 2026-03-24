@@ -6,6 +6,89 @@
    margin-top: 20px;
 }
 
+.sourceItem {
+   display: flex;
+   justify-content: space-between;
+   align-items: flex-start;
+   gap: 15px;
+   border: 1px solid var(--line-color);
+   background: var(--content-background-color);
+   border-radius: 8px;
+   padding: 14px;
+   margin-bottom: 10px;
+}
+
+.sourceItemMain {
+   display: flex;
+   flex-direction: column;
+   gap: 6px;
+}
+
+.sourceName {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   font-weight: 600;
+}
+
+.sourceBadges {
+   display: flex;
+   gap: 8px;
+}
+
+.modeBadge,
+.protocolBadge {
+   border: 1px solid var(--line-color);
+   border-radius: 999px;
+   padding: 2px 8px;
+   font-size: 0.7rem;
+   text-transform: uppercase;
+   letter-spacing: 0.04em;
+   width: fit-content;
+}
+
+.protocolBadge {
+   background: var(--body-background-color);
+}
+
+.sourcePath {
+   color: var(--content-text-color-dim, var(--content-text-color));
+   font-size: 0.82rem;
+}
+
+.sourceDescription {
+   font-size: 0.78rem;
+   color: var(--content-text-color-dim, var(--content-text-color));
+}
+
+.sourceActions {
+   display: flex;
+   gap: 8px;
+}
+
+.deleteBtn {
+   border: 1px solid var(--line-color);
+   border-radius: 6px;
+   padding: 6px 10px;
+   font-size: 0.75rem;
+   display: flex;
+   align-items: center;
+   gap: 6px;
+}
+
+.createSourceForm {
+   display: flex;
+   flex-direction: column;
+   gap: 12px;
+}
+
+.emptySources {
+   border: 1px dashed var(--line-color);
+   border-radius: 8px;
+   padding: 16px;
+   color: var(--content-text-color-dim, var(--content-text-color));
+}
+
 .devicesGrid {
    display: grid;
    grid-template-columns: repeat(3, 1fr);

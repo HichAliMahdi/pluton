@@ -49,6 +49,14 @@ export type PlanInterval = {
 export type PlanSource = {
    includes: string[];
    excludes: string[];
+   database?: {
+      engine: 'mysql' | 'postgres' | 'mongodb';
+      host: string;
+      port: number;
+      user: string;
+      password: string;
+      database: string;
+   };
 };
 
 export type SyncVerifiedResult = {
@@ -186,7 +194,7 @@ export type Plan = {
    lastUpdated: string | null;
    storageId: string;
    sourceId: string;
-   sourceType: 'device' | 'database' | 'googleworkspace' | 'microsoft365';
+   sourceType: 'device' | 'server' | 'database' | 'googleworkspace' | 'microsoft365';
    storagePath: string;
    sourceConfig: PlanSource;
    tags: string[];
@@ -205,12 +213,9 @@ export interface NewPlanSettings {
    description?: string;
    title: string;
    method: string;
-   sourceConfig: {
-      includes: string[];
-      excludes: string[];
-   };
+   sourceConfig: PlanSource;
    sourceId: string;
-   sourceType: 'device' | 'database' | 'googleworkspace' | 'microsoft365';
+   sourceType: 'device' | 'server' | 'database' | 'googleworkspace' | 'microsoft365';
    storage: { id: string; name: string };
    storagePath: string;
    tags: string[];

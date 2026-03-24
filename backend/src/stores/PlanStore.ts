@@ -167,8 +167,8 @@ export class PlanStore {
 			const taskStats = backupCompStats || backupTaskStats;
 			return {
 				...backup,
-				totalFiles: backupTaskStats?.total_files_processed || 0,
-				totalSize: backupTaskStats?.total_bytes_processed || 0,
+				totalFiles: taskStats?.total_files_processed || 0,
+				totalSize: taskStats?.total_bytes_processed || 0,
 				duration: Math.floor((backupEnded - backupStarted) / 1000),
 				active: stats?.snapshots?.includes(backup.id) || false,
 				changes: {

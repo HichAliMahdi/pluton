@@ -1,21 +1,38 @@
 import os from 'os';
 import fs from 'fs';
+import path from 'path';
+import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 import { getBackupPlanStats, runResticCommand } from '../../utils/restic/restic';
 import { generateResticRepoPath } from '../../utils/restic/helpers';
+import { runRcloneCommand } from '../../utils/rclone/rclone';
 import { processManager } from '../ProcessManager';
 import { PruneHandler } from './PruneHandler';
 import { ProgressManager } from '../ProgressManager';
 import { appPaths } from '../../utils/AppPaths';
 import { BackupPlanArgs } from '../../types/plans';
+import { generateUID } from '../../utils/helpers';
 import { runScriptsForEvent } from '../../utils/executeUserScript';
 import { configService } from '../../services/ConfigService';
 import { ReplicationOrchestrator } from './ReplicationOrchestrator';
 import { BackupMirror } from '../../types/backups';
+import { BaseStorageManager } from '../BaseStorageManager';
+import { ServerSourceService } from '../../services/ServerSourceService';
+import { ServerSourceRemote } from '../../types/serverSource';
 
 type ResticArgsAndEnv = {
 	resticArgs: string[];
 	resticEnv: Record<string, string>;
+};
+
+type DatabaseSourceConfig = {
+	engine: 'mysql' | 'postgres' | 'mongodb';
+	host: string;
+	port: number;
+	user: string;
+	password: string;
+	database: string;
+	config?: Record<string, string>;
 };
 
 export class BackupHandler {
@@ -24,9 +41,13 @@ export class BackupHandler {
 	// private backupAttempts = new Map<string, number>();
 	private progressManager: ProgressManager;
 	private replicationOrchestrator?: ReplicationOrchestrator;
+	private sourceService: ServerSourceService;
+	private storageManager: BaseStorageManager;
 
 	constructor(protected emitter: EventEmitter) {
 		this.progressManager = new ProgressManager(appPaths.getProgressDir());
+		this.sourceService = new ServerSourceService();
+		this.storageManager = new BaseStorageManager();
 		this.initializeProgressManager();
 	}
 
@@ -67,6 +88,7 @@ export class BackupHandler {
 			throw new Error(`Backup is already in progress for plan: ${planId}`);
 		}
 		this.runningBackups.add(planId);
+		let sourceCleanup: (() => Promise<void>) | undefined;
 
 		// Initialize progress file
 		try {
@@ -87,6 +109,36 @@ export class BackupHandler {
 		}
 
 		try {
+			await this.updateProgress(
+				planId,
+				backupId,
+				'pre-backup',
+				'PRE_BACKUP_SOURCE_PREP_START',
+				false
+			);
+
+			try {
+				sourceCleanup = await this.prepareSourceForBackup(planId, backupId, options);
+				await this.updateProgress(
+					planId,
+					backupId,
+					'pre-backup',
+					'PRE_BACKUP_SOURCE_PREP_COMPLETE',
+					true
+				);
+			} catch (error: any) {
+				const errMsg = error?.message || 'Unknown Error';
+				await this.updateProgress(
+					planId,
+					backupId,
+					'pre-backup',
+					'PRE_BACKUP_SOURCE_PREP_FAILED',
+					false,
+					errMsg
+				);
+				throw error;
+			}
+
 			// --- 1. PRE-BACKUP PHASE ---
 			const resticArgsAndEnv = this.createResticBackupArgs(planId, options as BackupPlanArgs);
 			await this.preBackupPhase(planId, backupId, options, resticArgsAndEnv);
@@ -195,10 +247,433 @@ export class BackupHandler {
 			// Re-throw the error so the JobProcessor's catch block is triggered and decides whether to retry.
 			throw new Error(errorMessage);
 		} finally {
+			if (sourceCleanup) {
+				try {
+					await sourceCleanup();
+				} catch (error) {
+					console.warn(`Failed to cleanup server source staging for plan ${planId}: ${error}`);
+				}
+			}
+
 			// This block runs regardless of success or failure, ensuring we always clean up.
 			this.runningBackups.delete(planId);
 			this.cancelledBackups.delete(planId);
 		}
+	}
+
+	private async prepareSourceForBackup(
+		planId: string,
+		backupId: string,
+		options: Record<string, any>
+	): Promise<(() => Promise<void>) | undefined> {
+		const detectedSourceType =
+			options.sourceType ||
+			(options?.sourceConfig?.database ? 'database' : undefined);
+
+		if (detectedSourceType === 'server') {
+			return this.prepareServerSourceForBackup(planId, backupId, options);
+		}
+		if (detectedSourceType === 'database') {
+			return this.prepareDatabaseSourceForBackup(planId, backupId, options);
+		}
+		return undefined;
+	}
+
+	private async prepareServerSourceForBackup(
+		planId: string,
+		backupId: string,
+		options: Record<string, any>
+	): Promise<(() => Promise<void>) | undefined> {
+
+		if (!options.sourceId) {
+			throw new Error('Server source ID is required for server source backups');
+		}
+
+		const source = await this.sourceService.resolveSourceForBackup(options.sourceId);
+		if (source.enabled === false) {
+			throw new Error(`Server source ${source.name} is disabled`);
+		}
+
+		if (!options.sourceConfig) {
+			options.sourceConfig = { includes: [], excludes: [] };
+		}
+
+		if (source.mode !== 'remote') {
+			options.sourceConfig.includes = [source.path];
+			return undefined;
+		}
+
+		if (!source.remote) {
+			throw new Error(`Remote configuration missing for server source ${source.name}`);
+		}
+
+		const stageDir = path.join(
+			appPaths.getCacheDir(),
+			'source-staging',
+			planId,
+			backupId,
+			generateUID()
+		);
+		await fs.promises.mkdir(stageDir, { recursive: true });
+
+		const remoteName = `src_${source.id.replace(/[^a-zA-Z0-9_-]/g, '_')}_${backupId}`;
+		const remoteSetup = this.buildRemoteSetup(source.remote);
+
+		const createResult = await this.storageManager.createRemote(
+			source.remote.protocol,
+			remoteName,
+			'password',
+			remoteSetup.credentials,
+			remoteSetup.settings
+		);
+
+		if (!createResult?.success) {
+			await fs.promises.rm(stageDir, { recursive: true, force: true });
+			throw new Error(createResult?.result || 'Failed to configure remote source');
+		}
+
+		const remotePath = (source.remote.remotePath || '').replace(/^\/+/, '');
+		const remoteRef = remotePath ? `${remoteName}:${remotePath}` : `${remoteName}:`;
+
+		try {
+			await runRcloneCommand(['copy', remoteRef, stageDir, '--create-empty-src-dirs']);
+		} catch (error) {
+			await this.storageManager.deleteRemote(remoteName);
+			await fs.promises.rm(stageDir, { recursive: true, force: true });
+			throw error;
+		}
+
+		options.sourceConfig.includes = [stageDir];
+
+		return async () => {
+			await this.storageManager.deleteRemote(remoteName);
+			await fs.promises.rm(stageDir, { recursive: true, force: true });
+		};
+	}
+
+	private async prepareDatabaseSourceForBackup(
+		planId: string,
+		backupId: string,
+		options: Record<string, any>
+	): Promise<() => Promise<void>> {
+		if (!options.sourceConfig) {
+			options.sourceConfig = { includes: [], excludes: [] };
+		}
+
+		const dbConfig = options.sourceConfig.database as DatabaseSourceConfig | undefined;
+		if (!dbConfig) {
+			throw new Error('Database source configuration is required');
+		}
+		if (
+			!dbConfig.engine ||
+			!dbConfig.host ||
+			!dbConfig.port ||
+			!dbConfig.user ||
+			!dbConfig.password ||
+			!dbConfig.database
+		) {
+			throw new Error('Database source settings are incomplete');
+		}
+
+		const dumpDir = path.join(
+			appPaths.getCacheDir(),
+			'database-staging',
+			planId,
+			backupId,
+			generateUID()
+		);
+		
+		try {
+			await fs.promises.mkdir(dumpDir, { recursive: true });
+
+			const safeDbName = dbConfig.database.replace(/[^a-zA-Z0-9_-]/g, '_');
+			const timestamp = new Date().toISOString().replace(/[.:]/g, '-');
+			let dumpFile: string | null = null;
+
+			try {
+				if (dbConfig.engine === 'mysql') {
+					dumpFile = path.join(dumpDir, `${safeDbName}-${timestamp}.sql`);
+					const args = [
+						'mysqldump',
+						'--host',
+						dbConfig.host,
+						'--port',
+						String(dbConfig.port),
+						'--user',
+						dbConfig.user,
+						'--no-tablespaces',
+						'--single-transaction',
+						'--quick',
+						'--routines',
+						'--events',
+						'--triggers',
+						dbConfig.database,
+					];
+					console.log(`[BackupHandler] Starting MySQL dump for database: ${dbConfig.database}`);
+					await this.executeDumpCommandToFile(args, dumpFile, {
+						MYSQL_PWD: dbConfig.password,
+					}, 60000);
+					console.log(`[BackupHandler] MySQL dump completed successfully`);
+				} else if (dbConfig.engine === 'postgres') {
+					dumpFile = path.join(dumpDir, `${safeDbName}-${timestamp}.sql`);
+					const args = [
+						'pg_dump',
+						'--host',
+						dbConfig.host,
+						'--port',
+						String(dbConfig.port),
+						'--username',
+						dbConfig.user,
+						'--format',
+						'plain',
+						'--no-owner',
+						'--no-privileges',
+						dbConfig.database,
+					];
+					console.log(`[BackupHandler] Starting PostgreSQL dump for database: ${dbConfig.database}`);
+					await this.executeDumpCommandToFile(args, dumpFile, {
+						PGPASSWORD: dbConfig.password,
+						PGCONNECT_TIMEOUT: '10',
+					}, 60000);
+					console.log(`[BackupHandler] PostgreSQL dump completed successfully`);
+				} else if (dbConfig.engine === 'mongodb') {
+					dumpFile = path.join(dumpDir, `${safeDbName}-${timestamp}.archive.gz`);
+					const args = [
+						'mongodump',
+						'--host',
+						dbConfig.host,
+						'--port',
+						String(dbConfig.port),
+						'--username',
+						dbConfig.user,
+						'--password',
+						dbConfig.password,
+						'--db',
+						dbConfig.database,
+						'--authenticationDatabase',
+						dbConfig.database,
+						'--socketTimeoutMS',
+						'10000',
+						'--serverSelectionTimeoutMS',
+						'10000',
+						'--archive',
+						dumpFile,
+						'--gzip',
+					];
+					console.log(`[BackupHandler] Starting MongoDB dump for database: ${dbConfig.database}`);
+					await this.executeCommand(args, {}, 60000);
+					console.log(`[BackupHandler] MongoDB dump completed successfully`);
+				}
+
+				// Verify dump file was created
+				if (dumpFile) {
+					try {
+						const stats = await fs.promises.stat(dumpFile);
+						if (stats.size === 0) {
+							throw new Error(
+								`Database dump file is empty. This usually means the database connection failed or the database is empty. Verify credentials and database accessibility.`
+							);
+						}
+						console.log(`[BackupHandler] Dump file created: ${dumpFile} (${stats.size} bytes)`);
+					} catch (statError: any) {
+						if (statError.code === 'ENOENT') {
+							throw new Error(
+								`Database dump failed - no output file created. Common causes: (1) Dump tool not installed (mysqldump/pg_dump/mongodump), (2) Invalid credentials, (3) Database not accessible. Error: ${statError.message}`
+							);
+						}
+						throw statError;
+					}
+				}
+
+				// Only add to restic if dump succeeded
+				options.sourceConfig.includes = [dumpDir];
+				options.sourceConfig.excludes = [];
+			} catch (dumpError: any) {
+				// If dump fails, clean up the directory and re-throw with better error message
+				try {
+					await fs.promises.rm(dumpDir, { recursive: true, force: true });
+				} catch (cleanupError) {
+					console.warn(`[BackupHandler] Failed to cleanup failed dump directory: ${cleanupError}`);
+				}
+				throw dumpError;
+			}
+
+			return async () => {
+				try {
+					// Check if directory exists before trying to delete
+					try {
+						await fs.promises.access(dumpDir);
+					} catch {
+						// Directory doesn't exist, nothing to clean up
+						console.log(`[BackupHandler] Database dump directory already removed or never created: ${dumpDir}`);
+						return;
+					}
+					
+					await fs.promises.rm(dumpDir, { recursive: true, force: true });
+					console.log(`[BackupHandler] Cleaned up database dump directory: ${dumpDir}`);
+				} catch (error) {
+					console.warn(`[BackupHandler] Warning: Failed to cleanup dump directory ${dumpDir}: ${error}`);
+				}
+			};
+		} catch (error: any) {
+			// Ensure directory is cleaned up on any error
+			try {
+				await fs.promises.rm(dumpDir, { recursive: true, force: true });
+			} catch (cleanupError) {
+				console.warn(`[BackupHandler] Failed cleanup after database dump error: ${cleanupError}`);
+			}
+			throw error;
+		}
+	}
+
+	private async executeDumpCommandToFile(
+		args: string[],
+		outputFile: string,
+		env: Record<string, string> = {},
+		timeoutMs = 60000
+	): Promise<void> {
+		await new Promise<void>((resolve, reject) => {
+			const child = spawn(args[0], args.slice(1), {
+				env: { ...process.env, ...env },
+			});
+			const stream = fs.createWriteStream(outputFile, { encoding: 'utf8' });
+			let stderr = '';
+			let settled = false;
+			const timeoutHandle = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				child.kill('SIGKILL');
+				stream.destroy();
+				reject(
+					new Error(
+						`${args[0]} timed out after ${Math.round(timeoutMs / 1000)}s while preparing database dump.`
+					)
+				);
+			}, timeoutMs);
+
+			child.stdout.pipe(stream);
+			child.stderr.on('data', data => {
+				stderr += data.toString();
+			});
+
+			child.on('error', error => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timeoutHandle);
+				stream.destroy();
+				reject(new Error(`Failed to execute ${args[0]}: ${error.message}`));
+			});
+
+			child.on('close', code => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timeoutHandle);
+				stream.end();
+				if (code === 0) {
+					resolve();
+				} else {
+					reject(new Error(stderr || `${args[0]} failed with code ${code}`));
+				}
+			});
+		});
+	}
+
+	private async executeCommand(
+		args: string[],
+		env: Record<string, string> = {},
+		timeoutMs = 60000
+	): Promise<void> {
+		await new Promise<void>((resolve, reject) => {
+			const child = spawn(args[0], args.slice(1), {
+				env: { ...process.env, ...env },
+			});
+			let stderr = '';
+			let settled = false;
+			const timeoutHandle = setTimeout(() => {
+				if (settled) return;
+				settled = true;
+				child.kill('SIGKILL');
+				reject(
+					new Error(
+						`${args[0]} timed out after ${Math.round(timeoutMs / 1000)}s while preparing database dump.`
+					)
+				);
+			}, timeoutMs);
+
+			child.stderr.on('data', data => {
+				stderr += data.toString();
+			});
+
+			child.on('error', error => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timeoutHandle);
+				reject(new Error(`Failed to execute ${args[0]}: ${error.message}`));
+			});
+
+			child.on('close', code => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(timeoutHandle);
+				if (code === 0) {
+					resolve();
+				} else {
+					reject(new Error(stderr || `${args[0]} failed with code ${code}`));
+				}
+			});
+		});
+	}
+
+	private buildRemoteSetup(remote: ServerSourceRemote): {
+		credentials: Record<string, string>;
+		settings: Record<string, string>;
+	} {
+		const host = (remote.host || '').trim();
+		const user = (remote.user || '').trim();
+		const pass = remote.pass || '';
+		const settings: Record<string, string> = {};
+
+		if (remote.port) {
+			settings.port = String(remote.port);
+		}
+
+		if (remote.protocol === 'smb') {
+			if (remote.domain) {
+				settings.domain = remote.domain;
+			}
+			return {
+				credentials: {
+					host,
+					username: user,
+					password: pass,
+				},
+				settings,
+			};
+		}
+
+		if (remote.protocol === 'webdav') {
+			const hasUrl = !!(remote.url || '').trim();
+			const baseUrl = hasUrl
+				? (remote.url as string).trim()
+				: `${remote.tls ? 'https' : 'http'}://${host}${remote.port ? `:${remote.port}` : ''}`;
+			return {
+				credentials: {
+					url: baseUrl,
+					user,
+					pass,
+				},
+				settings,
+			};
+		}
+
+		return {
+			credentials: {
+				host,
+				user,
+				pass,
+			},
+			settings,
+		};
 	}
 
 	/**
@@ -212,6 +687,35 @@ export class BackupHandler {
 	): Promise<void> {
 		// Update progress: Pre-backup start
 		await this.updateProgress(planId, backupId, 'pre-backup', 'PRE_BACKUP_START', false);
+
+		const initialSummary = {
+			message_type: 'summary',
+			files_new: 0,
+			files_changed: 0,
+			files_unmodified: 0,
+			dirs_new: 0,
+			dirs_changed: 0,
+			dirs_unmodified: 0,
+			data_blobs: 0,
+			tree_blobs: 0,
+			data_added: 0,
+			data_added_packed: 0,
+			total_files_processed: 0,
+			total_bytes_processed: 0,
+			total_duration: 0,
+			snapshot_id: '',
+			dry_run: true,
+		};
+
+		// Emit backup_start early so UI can show an active backup record immediately.
+		this.emitter.emit('backup_start', {
+			planId: options.id,
+			backupId,
+			summary: initialSummary,
+		});
+
+		// Wait for the backup DB record to be created before long pre-checks start.
+		await this.waitForBackupCreation(planId, backupId);
 
 		// Perform dry run
 		await this.updateProgress(planId, backupId, 'pre-backup', 'PRE_BACKUP_DRY_RUN_START', false);
@@ -238,16 +742,6 @@ export class BackupHandler {
 			);
 			throw error;
 		}
-
-		// Emit the 'start' event to signal the listener to create the DB record.
-		this.emitter.emit('backup_start', {
-			planId: options.id,
-			backupId: backupId,
-			summary: dryRunSummary,
-		});
-
-		// Wait for the 'backup_created' event before proceeding.
-		await this.waitForBackupCreation(planId, backupId);
 
 		// Run pre-flight checks
 		await this.updateProgress(planId, backupId, 'pre-backup', 'PRE_BACKUP_CHECKS_START', false);

@@ -1,6 +1,12 @@
 import path from 'path';
 
 export function generateResticRepoPath(storageName: string, storagePath: string) {
+	if ((storageName || '').toLowerCase() === 'local') {
+		if (!storagePath) {
+			return '';
+		}
+		return path.isAbsolute(storagePath) ? storagePath : path.resolve(storagePath);
+	}
 	return `rclone:${storageName}:${storagePath || ''}`;
 }
 export function toResticPath(srcPath: string) {

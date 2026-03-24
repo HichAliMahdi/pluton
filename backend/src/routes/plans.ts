@@ -21,6 +21,7 @@ export function createPlanRouter(controller: PlanController, router: Router = Ro
 		authM,
 		controller.deleteReplicationStorage.bind(controller)
 	);
+	router.post('/test/database', authM, controller.testDatabaseConnection.bind(controller));
 
 	return router;
 }

@@ -111,6 +111,9 @@ export const getBackupEventActionMessage = (action: string, storageName?: string
    // Static action mappings
    const staticMessages: Record<string, string> = {
       INITIALIZE: 'Starting Backup...',
+      PRE_BACKUP_SOURCE_PREP_START: 'Preparing Source Data...',
+      PRE_BACKUP_SOURCE_PREP_COMPLETE: 'Source Data Ready',
+      PRE_BACKUP_SOURCE_PREP_FAILED: 'Source Preparation Failed',
       PRE_BACKUP_START: 'Preparing Backup...',
       PRE_BACKUP_DRY_RUN_START: 'Performing Dry Run...',
       PRE_BACKUP_DRY_RUN_COMPLETE: 'Dry Run Complete',

@@ -1,4 +1,9 @@
-export type SourceTypes = 'device' | 'database' | 'googleworkspace' | 'microsoft365';
+export type SourceTypes =
+	| 'device'
+	| 'server'
+	| 'database'
+	| 'googleworkspace'
+	| 'microsoft365';
 
 export type SqlDatabaseConfig = {
 	engine: 'postgres' | 'mysql' | 'mongodb';

@@ -53,6 +53,15 @@ export type PlanInterval = {
 export type PlanSource = {
 	includes: string[];
 	excludes: string[];
+	database?: {
+		engine: 'mysql' | 'postgres' | 'mongodb';
+		host: string;
+		port: number;
+		user: string;
+		password: string;
+		database: string;
+		config?: Record<string, string>;
+	};
 };
 
 export type PlanIntegritySettings = {
@@ -209,10 +218,7 @@ export interface NewPlanReq {
 	title: string;
 	description?: string;
 	method: string;
-	sourceConfig: {
-		includes: string[];
-		excludes: string[];
-	};
+	sourceConfig: PlanSource;
 	sourceId: string;
 	sourceType: SourceTypes;
 	storage: { id: string; name: string };

@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router';
+import { toast } from 'react-toastify';
 import { useCheckActiveBackupsOrRestore } from '../../../services/plans';
 import classes from './PlanPendingBackup.module.scss';
 import Icon from '../../common/Icon/Icon';
@@ -15,7 +16,27 @@ const PlanPendingBackup = ({ planId, type = 'backup', onPendingDetect }: PlanPen
    const checkActivesMutation = useCheckActiveBackupsOrRestore();
 
    useEffect(() => {
+      const startedAt = Date.now();
+      const timeoutMs = 120000;
+
       const interval = window.setInterval(() => {
+    	 // Prevent infinite "Starting..." state if backend never creates an active item.
+    	 if (Date.now() - startedAt > timeoutMs) {
+    	 	window.clearInterval(interval);
+    	 	setSearchParams((params) => {
+    	 		if (type === 'restore') {
+    	 			params.delete('pendingrestore');
+    	 		} else {
+    	 			params.delete('pendingbackup');
+    	 		}
+
+    	 		return params;
+    	 	});
+    	 	toast.error(`${type === 'restore' ? 'Restore' : 'Backup'} is taking too long to start. Please check plan logs for details.`);
+    	 	onPendingDetect();
+    	 	return;
+    	 }
+
          checkActivesMutation.mutate(
             { planId, type },
             {
@@ -40,7 +61,7 @@ const PlanPendingBackup = ({ planId, type = 'backup', onPendingDetect }: PlanPen
       }, 1000);
 
       return () => window.clearInterval(interval);
-   }, [planId, type]);
+   }, [planId, type, onPendingDetect, setSearchParams]);
 
    return (
       <div className={classes.backup}>

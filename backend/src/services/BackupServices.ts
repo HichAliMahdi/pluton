@@ -32,14 +32,14 @@ export class BackupService {
 	) {}
 
 	getSnapshotStrategy(deviceId: string, method?: string): SnapshotStrategy {
-		const isRemote = deviceId !== 'main';
+		const isRemote = method !== 'rescue' && deviceId !== 'main';
 		return isRemote
 			? new RemoteSnapshotStrategy(deviceId)
 			: new LocalSnapshotStrategy(this.localSnapshotAgent);
 	}
 
-	getBackupStrategy(deviceId: string): BackupStrategy {
-		const isRemote = deviceId !== 'main';
+	getBackupStrategy(deviceId: string, sourceType: string = 'device'): BackupStrategy {
+		const isRemote = sourceType === 'device' && deviceId !== 'main';
 		return isRemote
 			? new RemoteBackupStrategy(deviceId)
 			: new LocalBackupStrategy(this.localPlanAgent);
@@ -51,7 +51,10 @@ export class BackupService {
 			throw new Error('Backup not found');
 		}
 
-		const strategy = this.getSnapshotStrategy(backup.sourceId, backup.method);
+		const strategy = this.getSnapshotStrategy(
+			backup.sourceType === 'device' ? backup.sourceId : 'main',
+			backup.method
+		);
 		const storageName = await this.getStorageName(backup.storageId as string);
 		const removeResult = await strategy.removeSnapshot(backup.planId as string, backupId, {
 			storageName,
@@ -102,7 +105,8 @@ export class BackupService {
 		if (!backup) {
 			throw new Error('Backup not found');
 		}
-		const backupDevice = backup.sourceId ? backup.sourceId : 'main';
+		const backupDevice =
+			backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
 		const strategy = this.getSnapshotStrategy(backupDevice, backup.method);
 		const downloadResult = await strategy.getSnapshotDownload(backup.planId as string, backupId);
 		if (!downloadResult.success) {
@@ -131,7 +135,8 @@ export class BackupService {
 				effectiveStoragePath = mirror.storagePath;
 			}
 		}
-		const backupDevice = backup.sourceId ? backup.sourceId : 'main';
+		const backupDevice =
+			backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
 		const strategy = this.getSnapshotStrategy(backupDevice, backup.method);
 		const storageName = await this.getStorageName(effectiveStorageId);
 		const downloadResult = await strategy.downloadSnapshot(backup.planId as string, backupId, '', {
@@ -150,7 +155,8 @@ export class BackupService {
 		if (!backup) {
 			throw new Error('Backup not found');
 		}
-		const backupDevice = backup.sourceId ? backup.sourceId : 'main';
+		const backupDevice =
+			backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
 		const strategy = this.getSnapshotStrategy(backupDevice, backup.method);
 		const downloadResult = await strategy.cancelSnapshotDownload(planId, backupId);
 		if (!downloadResult.success) {
@@ -168,8 +174,9 @@ export class BackupService {
 		if (!backup) {
 			throw new Error('Backup not found');
 		}
-		const backupDevice = backup.sourceId ? backup.sourceId : 'main';
-		const strategy = this.getBackupStrategy(backupDevice);
+		const backupDevice =
+			backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
+		const strategy = this.getBackupStrategy(backupDevice, backup.sourceType || 'device');
 		const cancelResult = strategy.cancelBackup
 			? await strategy.cancelBackup(planId, backupId)
 			: { success: false, result: '' };
@@ -199,8 +206,9 @@ export class BackupService {
 		if (!backup) {
 			throw new Error('Backup not found');
 		}
-		const backupDevice = backup.sourceId ? backup.sourceId : 'main';
-		const strategy = this.getBackupStrategy(backupDevice);
+		const backupDevice =
+			backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
+		const strategy = this.getBackupStrategy(backupDevice, backup.sourceType || 'device');
 		const progressResult = strategy.getBackupProgress
 			? await strategy.getBackupProgress(backup.planId as string, backupId)
 			: { success: false, result: '' };
@@ -215,7 +223,8 @@ export class BackupService {
 		if (!backup) {
 			throw new Error('Backup not found');
 		}
-		const backupDevice = backup.sourceId ? backup.sourceId : 'main';
+		const backupDevice =
+			backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
 		const strategy = this.getSnapshotStrategy(backupDevice);
 		// If replicationId is provided, browse from mirror storage
 		let effectiveStorageId = backup.storageId as string;
@@ -287,7 +296,8 @@ export class BackupService {
 		const failedReplicationIds = updatedMirrors
 			.filter(m => m.status === 'pending')
 			.map(m => m.replicationId);
-		const backupDevice = backup.sourceId ? backup.sourceId : 'main';
+		const backupDevice =
+			backup.sourceType === 'device' ? backup.sourceId || 'main' : 'main';
 		const strategy = this.getSnapshotStrategy(backupDevice);
 
 		const retryResult = await strategy.retryFailedReplication(

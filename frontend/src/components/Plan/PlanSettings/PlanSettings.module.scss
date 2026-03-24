@@ -248,6 +248,21 @@
    }
 }
 
+.hintText {
+   display: block;
+   margin-top: 8px;
+   font-size: 0.75rem;
+   color: var(--content-text-color-dim, var(--content-text-color));
+}
+
+.selectedPathLabel {
+   border: 1px solid var(--line-color);
+   border-radius: 6px;
+   padding: 10px;
+   font-size: 0.82rem;
+   color: var(--content-text-color);
+}
+
 // Footer
 .footer {
    display: flex;
