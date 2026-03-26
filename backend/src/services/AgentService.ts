@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { generateUID, safeCompare } from '../utils/helpers';
 import { AgentStore } from '../stores/AgentStore';
 import {
+	AgentBackupConfig,
 	AgentCapabilities,
 	AgentJobPayload,
 	AgentJobRecord,
@@ -37,6 +38,63 @@ export class AgentService {
 		if (targetAgent.id !== 'main') {
 			throw new AppError(403, 'Database backups are allowed only on the main server agent.');
 		}
+	}
+
+	private toDefaultBackupConfig(agentId: string): AgentBackupConfig {
+		return {
+			agentId,
+			mode: 'path_backup',
+			paths: [],
+			excludes: [],
+			storagePath: `agents/${agentId}`,
+			compression: true,
+			encryption: true,
+			updatedAt: Date.now(),
+		};
+	}
+
+	private normalizeBackupConfig(agentId: string, input: Partial<AgentBackupConfig>): AgentBackupConfig {
+		const mode = input.mode === 'full_backup' ? 'full_backup' : 'path_backup';
+		const paths = Array.isArray(input.paths)
+			? input.paths.map(p => String(p || '').trim()).filter(Boolean)
+			: [];
+		const excludes = Array.isArray(input.excludes)
+			? input.excludes.map(p => String(p || '').trim()).filter(Boolean)
+			: [];
+
+		if (mode === 'path_backup' && paths.length === 0) {
+			throw new AppError(400, 'At least one path is required in path backup mode.');
+		}
+
+		return {
+			agentId,
+			mode,
+			paths,
+			excludes,
+			storagePath: String(input.storagePath || `agents/${agentId}`),
+			compression: input.compression !== false,
+			encryption: input.encryption !== false,
+			updatedAt: Date.now(),
+		};
+	}
+
+	private configToPayload(config: AgentBackupConfig): AgentJobPayload {
+		return {
+			mode: config.mode,
+			sourceType: 'device',
+			paths: config.mode === 'full_backup' ? [] : config.paths,
+			excludes: config.excludes || [],
+			storage: {
+				id: 'local',
+				type: 'local',
+				path: config.storagePath,
+			},
+			settings: {
+				compression: config.compression,
+				encryption: config.encryption,
+				retries: 3,
+			},
+		};
 	}
 
 	private buildAgentRecordFromPairing(
@@ -234,6 +292,56 @@ export class AgentService {
 
 	async listAgents(): Promise<AgentRecord[]> {
 		return this.agentStore.getAgents();
+	}
+
+	async getAgentBackupConfig(agentId: string): Promise<AgentBackupConfig> {
+		const agent = await this.agentStore.getAgentById(agentId);
+		if (!agent) {
+			throw new NotFoundError('Agent not found.');
+		}
+		const current = await this.agentStore.getBackupConfig(agentId);
+		if (current) {
+			return current;
+		}
+		const fallback = this.toDefaultBackupConfig(agentId);
+		await this.agentStore.upsertBackupConfig(fallback);
+		return fallback;
+	}
+
+	async setAgentBackupConfig(
+		agentId: string,
+		input: Partial<AgentBackupConfig>
+	): Promise<AgentBackupConfig> {
+		const agent = await this.agentStore.getAgentById(agentId);
+		if (!agent) {
+			throw new NotFoundError('Agent not found.');
+		}
+		const normalized = this.normalizeBackupConfig(agentId, input);
+		await this.agentStore.upsertBackupConfig(normalized);
+		return normalized;
+	}
+
+	async runAgentBackupFromConfig(agentId: string): Promise<AgentJobRecord> {
+		const config = await this.getAgentBackupConfig(agentId);
+		const payload = this.configToPayload(config);
+		return this.createJob({ targetAgentId: agentId, payload });
+	}
+
+	async unregisterAgent(agentId: string): Promise<{ removed: boolean }> {
+		if (!agentId) {
+			throw new AppError(400, 'agentId is required.');
+		}
+		if (agentId === 'main') {
+			throw new AppError(400, 'Main server agent cannot be unregistered.');
+		}
+
+		const agent = await this.agentStore.getAgentById(agentId);
+		if (!agent) {
+			throw new NotFoundError('Agent not found.');
+		}
+
+		const removed = await this.agentStore.unregisterAgent(agentId);
+		return { removed };
 	}
 
 	async createPairingRequest(input: {

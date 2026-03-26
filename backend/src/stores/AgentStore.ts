@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { appPaths } from '../utils/AppPaths';
 import {
+	AgentBackupConfig,
 	AgentJobRecord,
 	AgentPairingRequest,
 	AgentRecord,
@@ -21,7 +22,13 @@ export class AgentStore {
 		try {
 			await fs.access(this.filePath);
 		} catch {
-			const initial: AgentsDataFile = { tokens: [], agents: [], jobs: [], pairingRequests: [] };
+			const initial: AgentsDataFile = {
+				tokens: [],
+				agents: [],
+				jobs: [],
+				pairingRequests: [],
+				backupConfigs: [],
+			};
 			await fs.writeFile(this.filePath, JSON.stringify(initial, null, 2), 'utf8');
 		}
 	}
@@ -36,9 +43,10 @@ export class AgentStore {
 				agents: parsed.agents || [],
 				jobs: parsed.jobs || [],
 				pairingRequests: parsed.pairingRequests || [],
+				backupConfigs: parsed.backupConfigs || [],
 			};
 		} catch {
-			return { tokens: [], agents: [], jobs: [], pairingRequests: [] };
+			return { tokens: [], agents: [], jobs: [], pairingRequests: [], backupConfigs: [] };
 		}
 	}
 
@@ -137,5 +145,36 @@ export class AgentStore {
 		const data = await this.readData();
 		data.pairingRequests = data.pairingRequests.map(p => (p.id === id ? { ...p, ...updates } : p));
 		await this.writeData(data);
+	}
+
+	async getBackupConfig(agentId: string): Promise<AgentBackupConfig | null> {
+		const data = await this.readData();
+		return data.backupConfigs.find(c => c.agentId === agentId) || null;
+	}
+
+	async upsertBackupConfig(config: AgentBackupConfig): Promise<void> {
+		const data = await this.readData();
+		const exists = data.backupConfigs.some(c => c.agentId === config.agentId);
+		if (exists) {
+			data.backupConfigs = data.backupConfigs.map(c =>
+				c.agentId === config.agentId ? { ...c, ...config } : c
+			);
+		} else {
+			data.backupConfigs.push(config);
+		}
+		await this.writeData(data);
+	}
+
+	async unregisterAgent(agentId: string): Promise<boolean> {
+		const data = await this.readData();
+		const before = data.agents.length;
+
+		data.agents = data.agents.filter(a => a.id !== agentId);
+		data.jobs = data.jobs.filter(j => j.targetAgentId !== agentId);
+		data.backupConfigs = data.backupConfigs.filter(c => c.agentId !== agentId);
+		data.pairingRequests = data.pairingRequests.filter(p => p.agentId !== agentId);
+
+		await this.writeData(data);
+		return data.agents.length < before;
 	}
 }

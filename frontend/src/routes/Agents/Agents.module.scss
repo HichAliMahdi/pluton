@@ -105,6 +105,23 @@
    }
 }
 
+.unregisterBtn {
+   border: 1px solid #c84242;
+   background: #fff2f2;
+   color: #962c2c;
+   border-radius: 6px;
+   padding: 6px 9px;
+   display: inline-flex;
+   align-items: center;
+   gap: 6px;
+   cursor: pointer;
+
+   &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+   }
+}
+
 .sub {
    color: var(--content-text-color-light);
    font-size: 0.72rem;

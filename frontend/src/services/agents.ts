@@ -99,3 +99,28 @@ export function useDownloadAgentInstaller() {
       mutationFn: downloadAgentInstaller,
    });
 }
+
+export async function unregisterAgent(agentId: string) {
+   const res = await fetch(`${API_URL}/agents/manage/${agentId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: {
+         Accept: 'application/json',
+      },
+   });
+   const data = await res.json();
+   if (!data.success) {
+      throw new Error(data.error || 'Failed to unregister agent');
+   }
+   return data;
+}
+
+export function useUnregisterAgent() {
+   const queryClient = useQueryClient();
+   return useMutation({
+      mutationFn: unregisterAgent,
+      onSuccess: () => {
+         queryClient.invalidateQueries({ queryKey: ['agents'] });
+      },
+   });
+}

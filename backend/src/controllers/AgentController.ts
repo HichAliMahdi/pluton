@@ -109,12 +109,108 @@ export class AgentController {
 		}
 	}
 
+	async getAgentBackupConfig(req: Request, res: Response): Promise<void> {
+		try {
+			const agentId = String(req.params.agentId || '').trim();
+			if (!agentId) {
+				res.status(400).json({ success: false, error: 'agentId is required.' });
+				return;
+			}
+			const result = await this.agentService.getAgentBackupConfig(agentId);
+			res.status(200).json({ success: true, result });
+		} catch (error: any) {
+			const appError = error as AppError;
+			res.status(appError.statusCode || 500).json({ success: false, error: appError.message });
+		}
+	}
+
+	async setAgentBackupConfig(req: Request, res: Response): Promise<void> {
+		try {
+			const agentId = String(req.params.agentId || '').trim();
+			if (!agentId) {
+				res.status(400).json({ success: false, error: 'agentId is required.' });
+				return;
+			}
+			const result = await this.agentService.setAgentBackupConfig(agentId, req.body || {});
+			res.status(200).json({ success: true, result });
+		} catch (error: any) {
+			const appError = error as AppError;
+			res.status(appError.statusCode || 500).json({ success: false, error: appError.message });
+		}
+	}
+
+	async runAgentBackupNow(req: Request, res: Response): Promise<void> {
+		try {
+			const agentId = String(req.params.agentId || '').trim();
+			if (!agentId) {
+				res.status(400).json({ success: false, error: 'agentId is required.' });
+				return;
+			}
+			const result = await this.agentService.runAgentBackupFromConfig(agentId);
+			res.status(201).json({ success: true, result });
+		} catch (error: any) {
+			const appError = error as AppError;
+			res.status(appError.statusCode || 500).json({ success: false, error: appError.message });
+		}
+	}
+
+	async unregisterAgent(req: Request, res: Response): Promise<void> {
+		try {
+			const agentId = String(req.params.agentId || '').trim();
+			if (!agentId) {
+				res.status(400).json({ success: false, error: 'agentId is required.' });
+				return;
+			}
+			const result = await this.agentService.unregisterAgent(agentId);
+			res.status(200).json({ success: true, result });
+		} catch (error: any) {
+			const appError = error as AppError;
+			res.status(appError.statusCode || 500).json({ success: false, error: appError.message });
+		}
+	}
+
 	async heartbeat(req: Request, res: Response): Promise<void> {
 		try {
 			const { agentId, agentSecret } = this.getAgentCreds(req);
 			const agent = await this.agentService.authenticateAgent(agentId, agentSecret);
 			await this.agentService.heartbeat(agent.id);
 			res.status(200).json({ success: true, result: { status: 'ok', ts: Date.now() } });
+		} catch (error: any) {
+			const appError = error as AppError;
+			res.status(appError.statusCode || 500).json({ success: false, error: appError.message });
+		}
+	}
+
+	async getSelfBackupConfig(req: Request, res: Response): Promise<void> {
+		try {
+			const { agentId, agentSecret } = this.getAgentCreds(req);
+			const agent = await this.agentService.authenticateAgent(agentId, agentSecret);
+			const result = await this.agentService.getAgentBackupConfig(agent.id);
+			res.status(200).json({ success: true, result });
+		} catch (error: any) {
+			const appError = error as AppError;
+			res.status(appError.statusCode || 500).json({ success: false, error: appError.message });
+		}
+	}
+
+	async setSelfBackupConfig(req: Request, res: Response): Promise<void> {
+		try {
+			const { agentId, agentSecret } = this.getAgentCreds(req);
+			const agent = await this.agentService.authenticateAgent(agentId, agentSecret);
+			const result = await this.agentService.setAgentBackupConfig(agent.id, req.body || {});
+			res.status(200).json({ success: true, result });
+		} catch (error: any) {
+			const appError = error as AppError;
+			res.status(appError.statusCode || 500).json({ success: false, error: appError.message });
+		}
+	}
+
+	async runSelfBackupNow(req: Request, res: Response): Promise<void> {
+		try {
+			const { agentId, agentSecret } = this.getAgentCreds(req);
+			const agent = await this.agentService.authenticateAgent(agentId, agentSecret);
+			const result = await this.agentService.runAgentBackupFromConfig(agent.id);
+			res.status(201).json({ success: true, result });
 		} catch (error: any) {
 			const appError = error as AppError;
 			res.status(appError.statusCode || 500).json({ success: false, error: appError.message });

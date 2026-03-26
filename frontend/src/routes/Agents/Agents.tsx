@@ -4,7 +4,12 @@ import classes from './Agents.module.scss';
 import PageHeader from '../../components/common/PageHeader/PageHeader';
 import Input from '../../components/common/form/Input/Input';
 import Icon from '../../components/common/Icon/Icon';
-import { useApprovePairingCode, useDownloadAgentInstaller, useGetAgents } from '../../services/agents';
+import {
+   useApprovePairingCode,
+   useDownloadAgentInstaller,
+   useGetAgents,
+   useUnregisterAgent,
+} from '../../services/agents';
 import { formatDateTime, timeAgo } from '../../utils/helpers';
 
 const Agents = () => {
@@ -12,6 +17,7 @@ const Agents = () => {
    const { data, isLoading } = useGetAgents();
    const approveMutation = useApprovePairingCode();
    const downloadMutation = useDownloadAgentInstaller();
+   const unregisterMutation = useUnregisterAgent();
 
    const agents = useMemo(() => data?.result || [], [data]);
 
@@ -36,6 +42,18 @@ const Agents = () => {
          toast.success(`Downloading ${platform === 'windows' ? '.exe' : '.deb'} installer...`);
       } catch (error: any) {
          toast.error(error?.message || 'Installer is not available yet.');
+      }
+   };
+
+   const unregister = async (agent: any) => {
+      const ok = window.confirm(`Unregister computer \"${agent.name}\"? This removes its queued jobs and local backup configuration.`);
+      if (!ok) return;
+
+      try {
+         await unregisterMutation.mutateAsync(agent.id);
+         toast.success(`Computer ${agent.name} was unregistered.`);
+      } catch (error: any) {
+         toast.error(error?.message || 'Failed to unregister computer.');
       }
    };
 
@@ -94,6 +112,7 @@ const Agents = () => {
                            <th>Status</th>
                            <th>Last Seen</th>
                            <th>Registered</th>
+                           <th></th>
                         </tr>
                      </thead>
                      <tbody>
@@ -116,6 +135,15 @@ const Agents = () => {
                                  {agent.lastSeenAt ? timeAgo(new Date(agent.lastSeenAt)) : '-'}
                               </td>
                               <td>{agent.registeredAt ? formatDateTime(agent.registeredAt) : '-'}</td>
+                              <td>
+                                 <button
+                                    className={classes.unregisterBtn}
+                                    onClick={() => unregister(agent)}
+                                    disabled={unregisterMutation.isPending}
+                                 >
+                                    <Icon type={unregisterMutation.isPending ? 'loading' : 'trash'} size={12} /> Unregister
+                                 </button>
+                              </td>
                            </tr>
                         ))}
                      </tbody>

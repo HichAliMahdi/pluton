@@ -52,6 +52,17 @@ export interface AgentPairingRequest {
 	credentialsFetchedAt?: number;
 }
 
+export interface AgentBackupConfig {
+	agentId: string;
+	mode: 'full_backup' | 'path_backup';
+	paths: string[];
+	excludes?: string[];
+	storagePath: string;
+	compression: boolean;
+	encryption: boolean;
+	updatedAt: number;
+}
+
 export type AgentJobStatus =
 	| 'assigned'
 	| 'acknowledged'
@@ -113,4 +124,5 @@ export interface AgentsDataFile {
 	agents: AgentRecord[];
 	jobs: AgentJobRecord[];
 	pairingRequests: AgentPairingRequest[];
+	backupConfigs: AgentBackupConfig[];
 }
